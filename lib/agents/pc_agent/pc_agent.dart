@@ -1,12 +1,15 @@
 import '../../core/result.dart';
+import '../../core/security/permission.dart';
 import '../../tools/tool.dart';
+import '../../tools/windows/launch_application_tool.dart';
 import '../agent.dart';
 
-/// Declares the future PC-agent boundary without controlling the computer.
+/// Routes structured PC commands to explicitly exposed tools.
 final class PcAgent implements Agent {
-  PcAgent({List<Tool> tools = const []}) : _tools = List.unmodifiable(tools);
+  PcAgent({required this.launchApplicationTool, required this.authorizer});
 
-  final List<Tool> _tools;
+  final LaunchApplicationTool launchApplicationTool;
+  final PermissionAuthorizer authorizer;
 
   @override
   String get id => 'agent.pc';
@@ -15,17 +18,30 @@ final class PcAgent implements Agent {
   String get name => 'PC Agent';
 
   @override
-  String get description => 'Future coordinator for authorized PC operations.';
+  String get description => 'Routes approved structured PC operations.';
 
   @override
-  List<Tool> get availableTools => _tools;
+  List<Tool> get availableTools => [launchApplicationTool];
 
   @override
-  Future<Result<AgentResponse>> handle(AgentRequest request) async =>
-      const Result.failure(
-        Failure(
-          'PC control is not implemented in Milestone 0B.',
-          code: 'not_implemented',
-        ),
+  Future<Result<AgentResponse>> handle(AgentRequest request) async {
+    if (request is! LaunchApplicationAgentRequest) {
+      return const Result.failure(
+        Failure('Unsupported PC command.', code: 'unsupported_pc_command'),
       );
+    }
+
+    final result = await launchApplicationTool.execute({
+      'application_id': request.applicationId,
+    }, ToolExecutionContext(authorizer: authorizer));
+    return result.fold(
+      (output) => Result.success(
+        AgentResponse(
+          message: output.summary ?? 'Application launched.',
+          data: output.data,
+        ),
+      ),
+      Result.failure,
+    );
+  }
 }

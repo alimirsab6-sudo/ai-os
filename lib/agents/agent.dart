@@ -1,16 +1,21 @@
 import '../core/result.dart';
 import '../tools/tool.dart';
 
-final class AgentRequest {
-  const AgentRequest({required this.instruction});
+sealed class AgentRequest {
+  const AgentRequest();
+}
 
-  final String instruction;
+final class LaunchApplicationAgentRequest extends AgentRequest {
+  const LaunchApplicationAgentRequest({required this.applicationId});
+
+  final String applicationId;
 }
 
 final class AgentResponse {
-  const AgentResponse({required this.message});
+  const AgentResponse({required this.message, this.data = const {}});
 
   final String message;
+  final Map<String, Object?> data;
 }
 
 abstract interface class Agent {

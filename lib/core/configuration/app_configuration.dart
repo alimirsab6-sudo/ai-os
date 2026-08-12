@@ -27,7 +27,7 @@ final class AppConfiguration {
 
   factory AppConfiguration.defaults() => AppConfiguration(
     selectedModelProvider: 'mock',
-    permissions: {Permission.read},
+    permissions: {Permission.read, Permission.execute},
   );
 
   final String selectedModelProvider;

@@ -2,9 +2,9 @@
 
 ## Scope
 
-Milestone 0B creates stable boundaries for later capabilities without adding
-those capabilities. All behavior is local and offline. The Flutter Windows
-runner remains the platform host, while domain abstractions are plain Dart.
+Milestone 1 retains the Milestone 0B boundaries and adds one real Windows
+capability: launching Chrome by stable application ID. The Flutter Windows
+runner remains unchanged, and domain abstractions remain plain Dart.
 
 ## Layers and responsibilities
 
@@ -14,10 +14,11 @@ runner remains the platform host, while domain abstractions are plain Dart.
   authorization, and orchestration.
 - `ai/model_provider/` defines provider-neutral conversations, responses, and
   future tool-call requests. Its mock provider supports deterministic tests.
-- `agents/` defines specialized coordinators. The PC Agent advertises tools but
-  intentionally performs no computer control in this milestone.
+- `agents/` defines specialized coordinators. The PC Agent accepts structured
+  requests and routes Chrome launch requests to `LaunchApplicationTool`.
 - `tools/` defines structured metadata, input schemas, execution results, and
-  the authorization gate. Category placeholders perform no real actions.
+  the authorization gate. Windows application resolution and launching are
+  isolated below `tools/windows/`; other category placeholders do nothing.
 - `memory/` defines storage operations and supplies a process-local map.
 - `skills/` represents reusable workflows with metadata and one entry point.
 - `mcp/` is a discovery boundary through which future MCP servers may expose
@@ -40,7 +41,9 @@ MCP implementation -> Tool interface
 Composition root -> all concrete implementations
 ```
 
-## Orchestrator flow
+## Orchestrator flows
+
+The provider-oriented flow established in Milestone 0B remains available:
 
 1. Validate the user request and return `Result.failure` for expected errors.
 2. Publish a request event.
@@ -49,9 +52,23 @@ Composition root -> all concrete implementations
 5. Return the assistant message and any requested tool calls in a structured
    `Result`, then publish a completion event.
 
-Tool calls are data only in Milestone 0B. They are not executed. Future routing
-can select an agent and invoke a tool through the same authorization boundary
-without changing model-provider contracts.
+Provider-generated tool calls remain data only and are not executed. Milestone
+1 adds a separate deterministic structured route:
+
+```text
+LaunchApplicationCommand("chrome")
+  -> Orchestrator
+  -> PC Agent
+  -> LaunchApplicationTool
+  -> PermissionAuthorizer(execute)
+  -> ApplicationRegistry
+  -> WindowsProcessLauncher
+  -> Chrome
+```
+
+This route never calls `ModelProvider`. It emits `pc.command.requested`,
+`tool.started`, `tool.succeeded` or `tool.failed`, and, after success,
+`application.launched`.
 
 ## Agent and tool relationship
 
@@ -59,7 +76,23 @@ An agent exposes the tools available to its responsibility and handles an
 `AgentRequest`. A tool has a stable ID, descriptive metadata, an AI-callable
 input schema, required permissions, and structured output. `AuthorizedTool`
 checks every requested permission before calling a concrete operation. The PC
-Agent and all category tools explicitly report `not_implemented` today.
+Agent performs no natural-language parsing; it accepts
+`LaunchApplicationAgentRequest` and exposes only its configured tools.
+
+## Application Registry and Windows launcher
+
+`ApplicationDescriptor` gives every launchable program a stable ID, display
+name, resolution strategy, and known executable locations. The local
+`ApplicationRegistry` supports registration, lookup, listing, and resolution.
+
+`WindowsApplicationRegistry` registers Chrome and checks only fixed Chrome
+paths below the Windows `ProgramFiles`, `ProgramFiles(x86)`, and `LOCALAPPDATA`
+roots. It does not crawl the filesystem or accept user-supplied paths.
+
+`ApplicationLauncher` separates process creation from lookup and tools. Its
+Windows implementation receives a resolved descriptor, starts that executable
+directly with an empty argument list and `runInShell: false`, and returns a
+structured launch receipt. Tests replace this boundary with a mock launcher.
 
 ## Model providers and future local AI
 
@@ -83,7 +116,9 @@ kind of object. No MCP networking or external server is present yet.
 
 Permissions are `read`, `write`, `execute`, and `sensitive`. A tool declares
 what it needs; `AuthorizedTool` submits a `PermissionRequest` before concrete
-execution. The current allow-list policy is deliberately small and local.
+execution. Launching Chrome requires `execute`, not `sensitive`. Resolution and
+process creation happen only after authorization succeeds. The current
+allow-list policy is deliberately small and local.
 Future consent prompts, audit logs, resource scopes, and persistent policies
 can implement `PermissionAuthorizer` without allowing tools to bypass it.
 
@@ -93,3 +128,10 @@ can implement `PermissionAuthorizer` without allowing tools to bypass it.
 permissions, feature flags, and storage locations. It is local and injected at
 startup. `MemoryStore` supplies store/retrieve/delete operations; the current
 implementation is volatile and intentionally has no vector or cloud backend.
+
+## Current limitations
+
+Only Chrome launch is implemented. There is no navigation, browser control,
+keyboard/mouse input, arbitrary process or terminal execution, application
+arguments, or discovery outside the fixed known paths. Provider-driven tool
+execution, other applications, and non-Windows launchers remain future work.

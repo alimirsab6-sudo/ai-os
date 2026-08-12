@@ -56,6 +56,12 @@ abstract base class AuthorizedTool implements Tool {
     Map<String, Object?> input,
     ToolExecutionContext context,
   ) async {
+    onStarted(input);
+    final preparation = await prepare(input);
+    if (preparation case Failed<Map<String, Object?>>(:final failure)) {
+      onFailed(failure);
+      return Result.failure(failure);
+    }
     final authorization = context.authorizer.authorize(
       PermissionRequest(
         subjectId: id,
@@ -64,10 +70,24 @@ abstract base class AuthorizedTool implements Tool {
       ),
     );
     if (authorization case Failed<void>(:final failure)) {
+      onFailed(failure);
       return Result.failure(failure);
     }
-    return perform(input);
+    final preparedInput = (preparation as Success<Map<String, Object?>>).value;
+    final result = await perform(preparedInput);
+    result.fold(onSucceeded, onFailed);
+    return result;
   }
 
+  Future<Result<Map<String, Object?>>> prepare(
+    Map<String, Object?> input,
+  ) async => Result.success(input);
+
   Future<Result<ToolOutput>> perform(Map<String, Object?> input);
+
+  void onStarted(Map<String, Object?> input) {}
+
+  void onSucceeded(ToolOutput output) {}
+
+  void onFailed(Failure failure) {}
 }

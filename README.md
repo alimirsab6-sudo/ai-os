@@ -4,12 +4,11 @@ AI OS is a native Windows Flutter application being built around a local,
 provider-agnostic orchestration core. The final product name and interactive UI
 have not been decided.
 
-## Current milestone
+## Current milestone and capability
 
-Milestone 0B establishes architecture only. It includes result-based failures,
-model-provider and agent boundaries, authorization-gated tools, orchestration,
-events, local configuration, in-memory storage, skills, an MCP boundary, and a
-plain-Dart composition root.
+Milestone 1 adds the first real PC Agent capability: launch Google Chrome on
+Windows through a structured, permission-checked command. The implementation
+does not use an LLM and does not accept arbitrary executable or shell input.
 
 The app currently uses a deterministic mock model provider and a temporary
 non-interactive Flutter shell.
@@ -33,6 +32,18 @@ flutter pub get
 flutter run -d windows
 ```
 
+## Manual Chrome launch
+
+With Chrome installed in a standard per-machine or per-user Windows location:
+
+```powershell
+dart run tool/launch_chrome.dart
+```
+
+This development-only entry point always submits
+`LaunchApplicationCommand(applicationId: 'chrome')`. It cannot run a user-
+supplied command or launch an unregistered application.
+
 ## Validate
 
 ```powershell
@@ -43,7 +54,8 @@ flutter build windows
 
 ## Current limitations
 
-There are no real AI providers, local models, Windows or browser automation,
-voice features, external integrations, persistent/vector memory, or MCP
-networking. Placeholder tools and the PC Agent report that execution is not
-implemented. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details.
+The only real computer-control operation is launching Chrome. There is no
+browser navigation, keyboard/mouse automation, terminal execution, real AI
+provider, local model, voice feature, external integration, persistent/vector
+memory, or MCP networking. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details.
