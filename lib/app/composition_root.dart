@@ -21,6 +21,9 @@ import '../tools/windows/launch_application_tool.dart';
 import '../tools/windows/discovery/window_discovery.dart';
 import '../tools/windows/discovery/windows_window_discovery.dart';
 import '../tools/windows/window_discovery_tools.dart';
+import '../tools/windows/control/window_controller.dart';
+import '../tools/windows/control/windows_window_controller.dart';
+import '../tools/windows/window_control_tools.dart';
 import 'service_registry.dart';
 
 final class CompositionRoot {
@@ -48,10 +51,38 @@ final class CompositionRoot {
       discovery: windowDiscovery,
       events: events,
     );
+    final windowController = WindowsWindowController(
+      discovery: windowDiscovery,
+    );
+    final activateWindowTool = ActivateWindowTool(
+      controller: windowController,
+      events: events,
+    );
+    final minimizeWindowTool = MinimizeWindowTool(
+      controller: windowController,
+      events: events,
+    );
+    final maximizeWindowTool = MaximizeWindowTool(
+      controller: windowController,
+      events: events,
+    );
+    final restoreWindowTool = RestoreWindowTool(
+      controller: windowController,
+      events: events,
+    );
+    final closeWindowTool = CloseWindowTool(
+      controller: windowController,
+      events: events,
+    );
     final tools = <Tool>[
       launchApplicationTool,
       listWindowsTool,
       getActiveWindowTool,
+      activateWindowTool,
+      minimizeWindowTool,
+      maximizeWindowTool,
+      restoreWindowTool,
+      closeWindowTool,
       const FileToolPlaceholder(),
       const BrowserToolPlaceholder(),
       const TerminalToolPlaceholder(),
@@ -62,6 +93,11 @@ final class CompositionRoot {
         authorizer: authorizer,
         listWindowsTool: listWindowsTool,
         getActiveWindowTool: getActiveWindowTool,
+        activateWindowTool: activateWindowTool,
+        minimizeWindowTool: minimizeWindowTool,
+        maximizeWindowTool: maximizeWindowTool,
+        restoreWindowTool: restoreWindowTool,
+        closeWindowTool: closeWindowTool,
       ),
     ];
     const provider = MockModelProvider(
@@ -77,6 +113,12 @@ final class CompositionRoot {
       ..register<WindowDiscovery>(windowDiscovery)
       ..register<ListWindowsTool>(listWindowsTool)
       ..register<GetActiveWindowTool>(getActiveWindowTool)
+      ..register<WindowController>(windowController)
+      ..register<ActivateWindowTool>(activateWindowTool)
+      ..register<MinimizeWindowTool>(minimizeWindowTool)
+      ..register<MaximizeWindowTool>(maximizeWindowTool)
+      ..register<RestoreWindowTool>(restoreWindowTool)
+      ..register<CloseWindowTool>(closeWindowTool)
       ..register<MemoryStore>(InMemoryStore())
       ..register<McpGateway>(const DisabledMcpGateway())
       ..register<Skill>(const PlaceholderSkill())

@@ -19,6 +19,32 @@ final class GetActiveWindowAgentRequest extends AgentRequest {
   const GetActiveWindowAgentRequest();
 }
 
+sealed class WindowControlAgentRequest extends AgentRequest {
+  const WindowControlAgentRequest({required this.windowId});
+
+  final String windowId;
+}
+
+final class ActivateWindowAgentRequest extends WindowControlAgentRequest {
+  const ActivateWindowAgentRequest({required super.windowId});
+}
+
+final class MinimizeWindowAgentRequest extends WindowControlAgentRequest {
+  const MinimizeWindowAgentRequest({required super.windowId});
+}
+
+final class MaximizeWindowAgentRequest extends WindowControlAgentRequest {
+  const MaximizeWindowAgentRequest({required super.windowId});
+}
+
+final class RestoreWindowAgentRequest extends WindowControlAgentRequest {
+  const RestoreWindowAgentRequest({required super.windowId});
+}
+
+final class CloseWindowAgentRequest extends WindowControlAgentRequest {
+  const CloseWindowAgentRequest({required super.windowId});
+}
+
 final class AgentResponse {
   const AgentResponse({required this.message, this.data = const {}});
 

@@ -3,6 +3,7 @@ import '../../core/security/permission.dart';
 import '../../tools/tool.dart';
 import '../../tools/windows/launch_application_tool.dart';
 import '../../tools/windows/window_discovery_tools.dart';
+import '../../tools/windows/window_control_tools.dart';
 import '../agent.dart';
 
 /// Routes structured PC commands to explicitly exposed tools.
@@ -12,12 +13,22 @@ final class PcAgent implements Agent {
     required this.authorizer,
     this.listWindowsTool,
     this.getActiveWindowTool,
+    this.activateWindowTool,
+    this.minimizeWindowTool,
+    this.maximizeWindowTool,
+    this.restoreWindowTool,
+    this.closeWindowTool,
   });
 
   final LaunchApplicationTool launchApplicationTool;
   final PermissionAuthorizer authorizer;
   final ListWindowsTool? listWindowsTool;
   final GetActiveWindowTool? getActiveWindowTool;
+  final ActivateWindowTool? activateWindowTool;
+  final MinimizeWindowTool? minimizeWindowTool;
+  final MaximizeWindowTool? maximizeWindowTool;
+  final RestoreWindowTool? restoreWindowTool;
+  final CloseWindowTool? closeWindowTool;
 
   @override
   String get id => 'agent.pc';
@@ -33,6 +44,11 @@ final class PcAgent implements Agent {
     launchApplicationTool,
     ?listWindowsTool,
     ?getActiveWindowTool,
+    ?activateWindowTool,
+    ?minimizeWindowTool,
+    ?maximizeWindowTool,
+    ?restoreWindowTool,
+    ?closeWindowTool,
   ];
 
   @override
@@ -48,6 +64,21 @@ final class PcAgent implements Agent {
     } else if (request is GetActiveWindowAgentRequest) {
       tool = getActiveWindowTool;
       input = const {};
+    } else if (request is ActivateWindowAgentRequest) {
+      tool = activateWindowTool;
+      input = {'window_id': request.windowId};
+    } else if (request is MinimizeWindowAgentRequest) {
+      tool = minimizeWindowTool;
+      input = {'window_id': request.windowId};
+    } else if (request is MaximizeWindowAgentRequest) {
+      tool = maximizeWindowTool;
+      input = {'window_id': request.windowId};
+    } else if (request is RestoreWindowAgentRequest) {
+      tool = restoreWindowTool;
+      input = {'window_id': request.windowId};
+    } else if (request is CloseWindowAgentRequest) {
+      tool = closeWindowTool;
+      input = {'window_id': request.windowId};
     } else {
       tool = null;
       input = const {};

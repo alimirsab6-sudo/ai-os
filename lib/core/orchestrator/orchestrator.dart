@@ -36,6 +36,32 @@ final class GetActiveWindowCommand extends OrchestratorCommand {
   const GetActiveWindowCommand();
 }
 
+sealed class WindowControlCommand extends OrchestratorCommand {
+  const WindowControlCommand({required this.windowId});
+
+  final String windowId;
+}
+
+final class ActivateWindowCommand extends WindowControlCommand {
+  const ActivateWindowCommand({required super.windowId});
+}
+
+final class MinimizeWindowCommand extends WindowControlCommand {
+  const MinimizeWindowCommand({required super.windowId});
+}
+
+final class MaximizeWindowCommand extends WindowControlCommand {
+  const MaximizeWindowCommand({required super.windowId});
+}
+
+final class RestoreWindowCommand extends WindowControlCommand {
+  const RestoreWindowCommand({required super.windowId});
+}
+
+final class CloseWindowCommand extends WindowControlCommand {
+  const CloseWindowCommand({required super.windowId});
+}
+
 /// Coordinates requests while keeping providers, agents, and tools replaceable.
 final class Orchestrator {
   Orchestrator({
@@ -113,6 +139,21 @@ final class Orchestrator {
       case GetActiveWindowCommand():
         agentRequest = const GetActiveWindowAgentRequest();
         _publishDiscoveryRequested('get_active_window');
+      case ActivateWindowCommand(:final windowId):
+        agentRequest = ActivateWindowAgentRequest(windowId: windowId);
+        _publishWindowControlRequested('activate', windowId);
+      case MinimizeWindowCommand(:final windowId):
+        agentRequest = MinimizeWindowAgentRequest(windowId: windowId);
+        _publishWindowControlRequested('minimize', windowId);
+      case MaximizeWindowCommand(:final windowId):
+        agentRequest = MaximizeWindowAgentRequest(windowId: windowId);
+        _publishWindowControlRequested('maximize', windowId);
+      case RestoreWindowCommand(:final windowId):
+        agentRequest = RestoreWindowAgentRequest(windowId: windowId);
+        _publishWindowControlRequested('restore', windowId);
+      case CloseWindowCommand(:final windowId):
+        agentRequest = CloseWindowAgentRequest(windowId: windowId);
+        _publishWindowControlRequested('close', windowId);
     }
 
     final pcAgent = _findPcAgent();
@@ -137,6 +178,16 @@ final class Orchestrator {
         type: 'window.discovery.requested',
         occurredAt: DateTime.now().toUtc(),
         data: {'operation': operation},
+      ),
+    );
+  }
+
+  void _publishWindowControlRequested(String operation, String windowId) {
+    events.publish(
+      ApplicationEvent(
+        type: 'window.control.requested',
+        occurredAt: DateTime.now().toUtc(),
+        data: {'operation': operation, 'window_id': windowId},
       ),
     );
   }

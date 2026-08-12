@@ -6,9 +6,10 @@ have not been decided.
 
 ## Current milestone and capability
 
-Milestone 2A adds read-only discovery of visible top-level Windows windows and
-the active window. Milestone 1 Chrome launch remains available. Both use
-structured, permission-checked commands without an LLM or arbitrary shell input.
+Milestone 2B adds deterministic top-level window activation, minimize,
+maximize, restore, and normal close requests. Window discovery and Milestone 1
+Chrome launch remain available. All capabilities use structured,
+permission-checked commands without an LLM or arbitrary shell input.
 
 The app currently uses a deterministic mock model provider and a temporary
 non-interactive Flutter shell.
@@ -53,7 +54,30 @@ dart run tool/discover_windows.dart
 ```
 
 The command prints the active window and visible titled top-level windows,
-including process metadata where Windows permits it.
+including process metadata and runtime IDs where Windows permits it.
+
+## Manual window control
+
+First run discovery and copy the runtime ID of the intended window. Then submit
+exactly one supported operation:
+
+```powershell
+dart run tool/control_window.dart activate windows:window:1a2b3c
+dart run tool/control_window.dart minimize windows:window:1a2b3c
+dart run tool/control_window.dart restore windows:window:1a2b3c
+dart run tool/control_window.dart maximize windows:window:1a2b3c
+```
+
+The ID must still exist in a fresh discovery snapshot. The manual close path is
+restricted to a deliberately opened Notepad test window:
+
+```powershell
+dart run tool/control_window.dart close windows:window:1a2b3c --confirm-test-window
+```
+
+Close requires `sensitive` permission and the development command refuses any
+process other than `notepad.exe`. Sensitive permission is not enabled by the
+normal application configuration.
 
 ## Validate
 
@@ -65,9 +89,10 @@ flutter build windows
 
 ## Current limitations
 
-The implemented Windows capabilities are limited to launching Chrome and
-read-only window discovery. There is no browser navigation, screenshot/OCR,
-keyboard/mouse automation, terminal execution, process termination, real AI
-provider, local model, voice feature, external integration, persistent/vector
-memory, or MCP networking. See
+The implemented Windows capabilities are limited to launching Chrome,
+read-only window discovery, and top-level window state control. There is no
+UI-element interaction, browser navigation, screenshot/OCR, keyboard/mouse
+automation, terminal execution, process termination, real AI provider, local
+model, voice feature, external integration, persistent/vector memory, or MCP
+networking. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details.

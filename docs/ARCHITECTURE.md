@@ -2,10 +2,10 @@
 
 ## Scope
 
-Milestone 2A retains the earlier boundaries and adds read-only discovery of
-visible top-level windows and the active window. Chrome launch remains intact.
-The Flutter Windows runner remains unchanged, and platform-neutral models and
-interfaces remain plain Dart.
+Milestone 2B retains the earlier boundaries and adds deterministic control of
+discovered top-level windows. Chrome launch and read-only discovery remain
+intact. The Flutter Windows runner remains unchanged, and platform-neutral
+models and interfaces remain plain Dart.
 
 ## Layers and responsibilities
 
@@ -16,7 +16,8 @@ interfaces remain plain Dart.
 - `ai/model_provider/` defines provider-neutral conversations, responses, and
   future tool-call requests. Its mock provider supports deterministic tests.
 - `agents/` defines specialized coordinators. The PC Agent routes structured
-  launch, list-windows, and active-window requests to their configured tools.
+  launch, discovery, and five top-level window-control requests to configured
+  tools.
 - `tools/` defines structured metadata, input schemas, execution results, and
   the authorization gate. Windows application resolution and launching are
   isolated below `tools/windows/`; native Win32 details stay in the discovery
@@ -88,6 +89,25 @@ These routes emit `window.discovery.requested`, followed by
 `window.discovery.started` and either `window.discovery.succeeded` or
 `window.discovery.failed`. They never consult `ModelProvider`.
 
+Milestone 2B adds structured `ActivateWindowCommand`,
+`MinimizeWindowCommand`, `MaximizeWindowCommand`, `RestoreWindowCommand`, and
+`CloseWindowCommand` routes:
+
+```text
+WindowControlCommand(runtimeWindowId)
+  -> Orchestrator
+  -> PC Agent
+  -> operation-specific Tool
+  -> PermissionAuthorizer
+  -> WindowController
+  -> current WindowDiscovery validation
+  -> WindowsWindowController
+```
+
+The route emits `window.control.requested`, `window.control.started`, and either
+`window.control.succeeded` or `window.control.failed`. Each event identifies the
+operation and runtime window ID; completion events also state success/failure.
+
 ## Agent and tool relationship
 
 An agent exposes the tools available to its responsibility and handles an
@@ -119,6 +139,24 @@ Enumeration is limited to visible, titled top-level windows. It uses no screen
 capture, OCR, shell, PowerShell, external utility, or filesystem scan. The
 small Dart-team `ffi` package supplies native allocation and UTF-16 helpers;
 it is not an automation framework.
+
+## Window control and runtime identity
+
+`WindowController` is platform-neutral and exposes activate, minimize,
+maximize, restore, and close operations using a runtime window ID. It returns a
+structured receipt or failure and exposes no HWND type.
+
+`WindowsWindowController` accepts IDs in the discovery-generated
+`windows:window:<hex>` form, but never trusts the encoded handle by itself. For
+every operation it obtains a fresh `WindowDiscovery` snapshot, requires an
+exact ID match, parses the handle only after that match, and verifies it again
+with `IsWindow`. A stale or invented ID returns `window_not_found` or
+`invalid_window_id`.
+
+The native implementation uses `SetForegroundWindow` for activation,
+`ShowWindow` with the single requested state for minimize/maximize/restore, and
+`PostMessageW(WM_CLOSE)` for a normal close request. It does not call a process
+termination API, inject input, invoke a shell, or run an external utility.
 
 ## Application Registry and Windows launcher
 
@@ -162,6 +200,10 @@ process creation happen only after authorization succeeds. The current
 allow-list policy is deliberately small and local.
 Window discovery requires only `read`; native enumeration is not invoked when
 authorization is denied.
+Activation, minimize, maximize, and restore require `execute`. Close requires
+`sensitive`, which is deliberately absent from `AppConfiguration.defaults()`.
+The manual close command grants it only after confirming that the freshly
+discovered target is `notepad.exe` and the explicit test flag is present.
 Future consent prompts, audit logs, resource scopes, and persistent policies
 can implement `PermissionAuthorizer` without allowing tools to bypass it.
 
@@ -174,8 +216,9 @@ implementation is volatile and intentionally has no vector or cloud backend.
 
 ## Current limitations
 
-Only Chrome launch and read-only window discovery are implemented. There is no
-navigation, screenshot/OCR, browser control, keyboard/mouse input, arbitrary
-process or terminal execution, process termination, or application arguments.
+Only Chrome launch, read-only window discovery, and top-level window state
+control are implemented. There is no UI-element traversal, navigation,
+screenshot/OCR, browser control, keyboard/mouse input, arbitrary process or
+terminal execution, process termination, or application arguments.
 Provider-driven tool execution, other application launchers, richer desktop
-metadata, and non-Windows discovery implementations remain future work.
+metadata, and non-Windows discovery/control implementations remain future work.

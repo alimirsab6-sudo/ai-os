@@ -59,7 +59,7 @@ abstract base class AuthorizedTool implements Tool {
     onStarted(input);
     final preparation = await prepare(input);
     if (preparation case Failed<Map<String, Object?>>(:final failure)) {
-      onFailed(failure);
+      onFailedWithInput(failure, input);
       return Result.failure(failure);
     }
     final authorization = context.authorizer.authorize(
@@ -70,12 +70,12 @@ abstract base class AuthorizedTool implements Tool {
       ),
     );
     if (authorization case Failed<void>(:final failure)) {
-      onFailed(failure);
+      onFailedWithInput(failure, input);
       return Result.failure(failure);
     }
     final preparedInput = (preparation as Success<Map<String, Object?>>).value;
     final result = await perform(preparedInput);
-    result.fold(onSucceeded, onFailed);
+    result.fold(onSucceeded, (failure) => onFailedWithInput(failure, input));
     return result;
   }
 
@@ -90,4 +90,7 @@ abstract base class AuthorizedTool implements Tool {
   void onSucceeded(ToolOutput output) {}
 
   void onFailed(Failure failure) {}
+
+  void onFailedWithInput(Failure failure, Map<String, Object?> input) =>
+      onFailed(failure);
 }

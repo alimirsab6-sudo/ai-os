@@ -53,5 +53,6 @@ Future<void> main() async {
 String _label(Map<String, Object?> window) {
   final title = window['title'] as String? ?? '(untitled)';
   final processName = window['process_name'] as String?;
-  return processName == null ? title : '$title [$processName]';
+  final id = window['id'] as String? ?? '(unknown ID)';
+  return processName == null ? '$title ($id)' : '$title [$processName] ($id)';
 }
