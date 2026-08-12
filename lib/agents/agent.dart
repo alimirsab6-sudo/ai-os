@@ -57,6 +57,16 @@ final class InspectUiAgentRequest extends AgentRequest {
   final int maxElements;
 }
 
+final class InvokeUiElementAgentRequest extends AgentRequest {
+  const InvokeUiElementAgentRequest({
+    required this.windowId,
+    required this.elementId,
+  });
+
+  final String windowId;
+  final String elementId;
+}
+
 final class AgentResponse {
   const AgentResponse({required this.message, this.data = const {}});
 

@@ -18,6 +18,8 @@ final class WindowsUiAutomation implements UiAutomation {
 
   final WindowDiscovery windowDiscovery;
   UiInspectionResult? _lastInspection;
+  final Map<String, _ElementLocator> _elementLocators = {};
+  int _inspectionSequence = 0;
 
   @override
   Future<Result<UiInspectionResult>> inspectWindow(
@@ -44,11 +46,15 @@ final class WindowsUiAutomation implements UiAutomation {
     }
 
     try {
+      final sessionId =
+          '${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}'
+          '${(_inspectionSequence++).toRadixString(16).padLeft(4, '0')}';
       final nativeResult = await Isolate.run(
         () => _inspectNativeWindow(
           (handleResult as Success<int>).value,
           maxDepth,
           maxElements,
+          sessionId,
         ),
       );
       if (nativeResult['failure'] case final String message) {
@@ -56,10 +62,24 @@ final class WindowsUiAutomation implements UiAutomation {
           Failure(message, code: nativeResult['failure_code'] as String?),
         );
       }
-      final elements = (nativeResult['elements']! as List<Object?>)
-          .cast<Map<Object?, Object?>>()
-          .map(UiElement.fromMap)
-          .toList(growable: false);
+      final nativeElements = (nativeResult['elements']! as List<Object?>)
+          .cast<Map<Object?, Object?>>();
+      final elements = <UiElement>[];
+      final locators = <String, _ElementLocator>{};
+      for (final nativeElement in nativeElements) {
+        final element = UiElement.fromMap(nativeElement);
+        elements.add(element);
+        locators[element.id] = _ElementLocator(
+          windowId: windowId,
+          path: (nativeElement['_path']! as List<Object?>).cast<int>(),
+          runtimeId: (nativeElement['_runtime_id']! as List<Object?>)
+              .cast<int>(),
+          name: element.name,
+          automationId: element.automationId,
+          className: element.className,
+          controlType: element.controlType,
+        );
+      }
       final result = UiInspectionResult(
         windowId: windowId,
         elements: elements,
@@ -68,6 +88,9 @@ final class WindowsUiAutomation implements UiAutomation {
         wasTruncated: nativeResult['was_truncated']! as bool,
       );
       _lastInspection = result;
+      _elementLocators
+        ..clear()
+        ..addAll(locators);
       return Result.success(result);
     } on Object catch (error) {
       return Result.failure(
@@ -146,8 +169,64 @@ final class WindowsUiAutomation implements UiAutomation {
       }
     }
     return const Result.failure(
-      Failure('UI element was not found.', code: 'element_not_found'),
+      Failure(
+        'UI element is stale or was not found.',
+        code: 'stale_ui_element',
+      ),
     );
+  }
+
+  @override
+  Future<Result<UiInvokeReceipt>> invoke(
+    String windowId,
+    String elementId,
+  ) async {
+    if (!Platform.isWindows) {
+      return const Result.failure(
+        Failure(
+          'UI invocation is currently supported only on Windows.',
+          code: 'unsupported_platform',
+        ),
+      );
+    }
+    final locator = _elementLocators[elementId];
+    if (locator == null || locator.windowId != windowId) {
+      return const Result.failure(
+        Failure(
+          'The UI element is stale or does not belong to the target window.',
+          code: 'stale_ui_element',
+        ),
+      );
+    }
+    final handleResult = await _resolveCurrentHandle(windowId);
+    if (handleResult case Failed<int>(:final failure)) {
+      return Result.failure(failure);
+    }
+    try {
+      final locatorData = locator.toMap();
+      final nativeResult = await Isolate.run(
+        () => _invokeNativeElement(
+          (handleResult as Success<int>).value,
+          locatorData,
+        ),
+      );
+      if (nativeResult['failure'] case final String message) {
+        return Result.failure(
+          Failure(message, code: nativeResult['failure_code'] as String?),
+        );
+      }
+      _elementLocators.remove(elementId);
+      return Result.success(
+        UiInvokeReceipt(windowId: windowId, elementId: elementId),
+      );
+    } on Object catch (error) {
+      return Result.failure(
+        Failure(
+          'Windows UI invocation failed: $error',
+          code: 'ui_invoke_failed',
+        ),
+      );
+    }
   }
 
   Failure? _validateLimits(int maxDepth, int maxElements) {
@@ -197,6 +276,7 @@ Map<String, Object?> _inspectNativeWindow(
   int windowHandle,
   int maxDepth,
   int maxElements,
+  String session,
 ) {
   final api = _ComApi();
   final initializeResult = api.coInitializeEx(nullptr, 0);
@@ -231,9 +311,10 @@ Map<String, Object?> _inspectNativeWindow(
       );
     }
     walker = walkerResult;
-    pending.add(_PendingElement(rootResult, parentId: null, depth: 0));
+    pending.add(
+      _PendingElement(rootResult, parentId: null, depth: 0, path: const []),
+    );
 
-    final session = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
     final elements = <Map<String, Object?>>[];
     var wasTruncated = false;
     var ordinal = 0;
@@ -248,6 +329,7 @@ Map<String, Object?> _inspectNativeWindow(
             elementId,
             current.parentId,
             current.depth,
+            current.path,
           ),
         );
 
@@ -261,6 +343,7 @@ Map<String, Object?> _inspectNativeWindow(
         }
 
         var child = _firstChild(walker, current.pointer);
+        var childIndex = 0;
         while (child != nullptr) {
           if (elements.length + pending.length >= maxElements) {
             wasTruncated = true;
@@ -273,9 +356,11 @@ Map<String, Object?> _inspectNativeWindow(
               child,
               parentId: elementId,
               depth: current.depth + 1,
+              path: [...current.path, childIndex],
             ),
           );
           child = next;
+          childIndex++;
         }
       } finally {
         _release(current.pointer);
@@ -312,6 +397,7 @@ Map<String, Object?> _readElement(
   String id,
   String? parentId,
   int depth,
+  List<int> path,
 ) {
   final controlType = WindowsUiAutomationMappings.controlTypeFromId(
     _getIntProperty(element, 21),
@@ -328,7 +414,192 @@ Map<String, Object?> _readElement(
     'is_focused': _getBoolProperty(element, 26),
     'depth': depth,
     'supported_patterns': _getSupportedPatterns(element),
+    '_path': path,
+    '_runtime_id': _getRuntimeId(element),
   };
+}
+
+List<int> _getRuntimeId(Pointer<Void> element) {
+  final output = calloc<Pointer<Void>>();
+  try {
+    final method = _method(element, 4)
+        .cast<NativeFunction<_GetRuntimeIdNative>>()
+        .asFunction<_GetRuntimeIdDart>();
+    if (method(element, output) < 0 || output.value == nullptr) {
+      return const [];
+    }
+    final safeArray = output.value;
+    try {
+      final lower = calloc<Int32>();
+      final upper = calloc<Int32>();
+      try {
+        if (_ComApi.safeArrayGetLBound(safeArray, 1, lower) < 0 ||
+            _ComApi.safeArrayGetUBound(safeArray, 1, upper) < 0) {
+          return const [];
+        }
+        final result = <int>[];
+        final index = calloc<Int32>();
+        final value = calloc<Int32>();
+        try {
+          for (var current = lower.value; current <= upper.value; current++) {
+            index.value = current;
+            if (_ComApi.safeArrayGetElement(safeArray, index, value) < 0) {
+              return const [];
+            }
+            result.add(value.value);
+          }
+        } finally {
+          calloc.free(index);
+          calloc.free(value);
+        }
+        return result;
+      } finally {
+        calloc.free(lower);
+        calloc.free(upper);
+      }
+    } finally {
+      _ComApi.safeArrayDestroy(safeArray);
+    }
+  } on Object {
+    return const [];
+  } finally {
+    calloc.free(output);
+  }
+}
+
+Map<String, Object?> _invokeNativeElement(
+  int windowHandle,
+  Map<String, Object?> locator,
+) {
+  final api = _ComApi();
+  final initializeResult = api.coInitializeEx(nullptr, 0);
+  final shouldUninitialize = initializeResult >= 0;
+  if (initializeResult < 0 && initializeResult != _rpcChangedMode) {
+    return _nativeFailure('COM initialization failed.', initializeResult);
+  }
+
+  Pointer<Void> automation = nullptr;
+  Pointer<Void> walker = nullptr;
+  Pointer<Void> element = nullptr;
+  Pointer<Void> invokePattern = nullptr;
+  try {
+    final automationResult = api.createAutomation();
+    if (automationResult case Failed<Pointer<Void>>(:final failure)) {
+      return {'failure': failure.message, 'failure_code': failure.code};
+    }
+    automation = (automationResult as Success<Pointer<Void>>).value;
+    element = _elementFromHandle(automation, windowHandle);
+    if (element == nullptr) {
+      return _nativeFailureMessage(
+        'The target window no longer exposes a UI Automation root.',
+        'stale_ui_element',
+      );
+    }
+    walker = _controlViewWalker(automation);
+    if (walker == nullptr) {
+      return _nativeFailureMessage(
+        'UI Automation control-view walker is unavailable.',
+        'ui_invoke_failed',
+      );
+    }
+
+    for (final childIndex in (locator['path']! as List<Object?>).cast<int>()) {
+      var nextElement = _firstChild(walker, element);
+      if (nextElement == nullptr) {
+        return _nativeFailureMessage(
+          'The UI element no longer exists at its inspected location.',
+          'stale_ui_element',
+        );
+      }
+      for (var index = 0; index < childIndex; index++) {
+        final sibling = _nextSibling(walker, nextElement);
+        _release(nextElement);
+        nextElement = sibling;
+        if (nextElement == nullptr) {
+          return _nativeFailureMessage(
+            'The UI element no longer exists at its inspected location.',
+            'stale_ui_element',
+          );
+        }
+      }
+      _release(element);
+      element = nextElement;
+    }
+
+    final expectedRuntimeId = (locator['runtime_id']! as List<Object?>)
+        .cast<int>();
+    final currentRuntimeId = _getRuntimeId(element);
+    if (expectedRuntimeId.isEmpty ||
+        currentRuntimeId.isEmpty ||
+        !_sameInts(expectedRuntimeId, currentRuntimeId) ||
+        !_matchesFingerprint(element, locator)) {
+      return _nativeFailureMessage(
+        'The UI element changed or is stale.',
+        'stale_ui_element',
+      );
+    }
+
+    final patternOutput = calloc<Pointer<Void>>();
+    try {
+      final getPattern = _method(
+        element,
+        16,
+      ).cast<NativeFunction<_GetPatternNative>>().asFunction<_GetPatternDart>();
+      final patternResult = getPattern(element, 10000, patternOutput);
+      if (patternResult < 0 || patternOutput.value == nullptr) {
+        return _nativeFailureMessage(
+          'The UI element does not support the Invoke pattern.',
+          'invoke_not_supported',
+        );
+      }
+      invokePattern = patternOutput.value;
+    } finally {
+      calloc.free(patternOutput);
+    }
+
+    final invoke = _method(
+      invokePattern,
+      3,
+    ).cast<NativeFunction<_InvokeNative>>().asFunction<_InvokeDart>();
+    final invokeResult = invoke(invokePattern);
+    if (invokeResult < 0) {
+      return _nativeFailure(
+        'The UI Automation Invoke operation failed.',
+        invokeResult,
+      );
+    }
+    return {'success': true};
+  } on Object catch (error) {
+    return _nativeFailureMessage(
+      'Native UI invocation failed: $error',
+      'ui_invoke_failed',
+    );
+  } finally {
+    if (invokePattern != nullptr) _release(invokePattern);
+    if (element != nullptr) _release(element);
+    if (walker != nullptr) _release(walker);
+    if (automation != nullptr) _release(automation);
+    if (shouldUninitialize) api.coUninitialize();
+  }
+}
+
+bool _matchesFingerprint(Pointer<Void> element, Map<String, Object?> locator) {
+  final controlType = WindowsUiAutomationMappings.controlTypeFromId(
+    _getIntProperty(element, 21),
+  );
+  return _getStringProperty(element, 23) == locator['name'] &&
+      _emptyToNull(_getStringProperty(element, 29)) ==
+          locator['automation_id'] &&
+      _emptyToNull(_getStringProperty(element, 30)) == locator['class_name'] &&
+      controlType.name == locator['control_type'];
+}
+
+bool _sameInts(List<int> first, List<int> second) {
+  if (first.length != second.length) return false;
+  for (var index = 0; index < first.length; index++) {
+    if (first[index] != second[index]) return false;
+  }
+  return true;
 }
 
 List<String> _getSupportedPatterns(Pointer<Void> element) {
@@ -477,11 +748,42 @@ final class _PendingElement {
     this.pointer, {
     required this.parentId,
     required this.depth,
+    required this.path,
   });
 
   final Pointer<Void> pointer;
   final String? parentId;
   final int depth;
+  final List<int> path;
+}
+
+final class _ElementLocator {
+  const _ElementLocator({
+    required this.windowId,
+    required this.path,
+    required this.runtimeId,
+    required this.name,
+    required this.automationId,
+    required this.className,
+    required this.controlType,
+  });
+
+  final String windowId;
+  final List<int> path;
+  final List<int> runtimeId;
+  final String name;
+  final String? automationId;
+  final String? className;
+  final UiControlType controlType;
+
+  Map<String, Object?> toMap() => {
+    'path': path,
+    'runtime_id': runtimeId,
+    'name': name,
+    'automation_id': automationId,
+    'class_name': className,
+    'control_type': controlType.name,
+  };
 }
 
 final class _Guid extends Struct {
@@ -528,6 +830,34 @@ final class _ComApi {
         'oleaut32.dll',
       ).lookupFunction<_SysStringLengthNative, _SysStringLengthDart>(
         'SysStringLen',
+      );
+
+  static final _SafeArrayGetBoundDart safeArrayGetLBound =
+      DynamicLibrary.open(
+        'oleaut32.dll',
+      ).lookupFunction<_SafeArrayGetBoundNative, _SafeArrayGetBoundDart>(
+        'SafeArrayGetLBound',
+      );
+
+  static final _SafeArrayGetBoundDart safeArrayGetUBound =
+      DynamicLibrary.open(
+        'oleaut32.dll',
+      ).lookupFunction<_SafeArrayGetBoundNative, _SafeArrayGetBoundDart>(
+        'SafeArrayGetUBound',
+      );
+
+  static final _SafeArrayGetElementDart safeArrayGetElement =
+      DynamicLibrary.open(
+        'oleaut32.dll',
+      ).lookupFunction<_SafeArrayGetElementNative, _SafeArrayGetElementDart>(
+        'SafeArrayGetElement',
+      );
+
+  static final _SafeArrayDestroyDart safeArrayDestroy =
+      DynamicLibrary.open(
+        'oleaut32.dll',
+      ).lookupFunction<_SafeArrayDestroyNative, _SafeArrayDestroyDart>(
+        'SafeArrayDestroy',
       );
 
   Result<Pointer<Void>> createAutomation() {
@@ -662,9 +992,33 @@ typedef _GetPatternDart =
       int patternId,
       Pointer<Pointer<Void>> output,
     );
+typedef _GetRuntimeIdNative =
+    Int32 Function(Pointer<Void> element, Pointer<Pointer<Void>> output);
+typedef _GetRuntimeIdDart =
+    int Function(Pointer<Void> element, Pointer<Pointer<Void>> output);
+typedef _InvokeNative = Int32 Function(Pointer<Void> pattern);
+typedef _InvokeDart = int Function(Pointer<Void> pattern);
 typedef _ReleaseNative = Uint32 Function(Pointer<Void> object);
 typedef _ReleaseDart = int Function(Pointer<Void> object);
 typedef _SysFreeStringNative = Void Function(Pointer<Utf16> string);
 typedef _SysFreeStringDart = void Function(Pointer<Utf16> string);
 typedef _SysStringLengthNative = Uint32 Function(Pointer<Utf16> string);
 typedef _SysStringLengthDart = int Function(Pointer<Utf16> string);
+typedef _SafeArrayGetBoundNative =
+    Int32 Function(Pointer<Void> array, Uint32 dimension, Pointer<Int32> bound);
+typedef _SafeArrayGetBoundDart =
+    int Function(Pointer<Void> array, int dimension, Pointer<Int32> bound);
+typedef _SafeArrayGetElementNative =
+    Int32 Function(
+      Pointer<Void> array,
+      Pointer<Int32> index,
+      Pointer<Int32> value,
+    );
+typedef _SafeArrayGetElementDart =
+    int Function(
+      Pointer<Void> array,
+      Pointer<Int32> index,
+      Pointer<Int32> value,
+    );
+typedef _SafeArrayDestroyNative = Int32 Function(Pointer<Void> array);
+typedef _SafeArrayDestroyDart = int Function(Pointer<Void> array);

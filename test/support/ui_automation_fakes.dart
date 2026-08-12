@@ -3,17 +3,21 @@ import 'package:ai_os/tools/windows/ui_automation/ui_automation.dart';
 import 'package:ai_os/tools/windows/ui_automation/ui_element.dart';
 
 final class MockUiAutomation implements UiAutomation {
-  MockUiAutomation({this.failure});
+  MockUiAutomation({this.failure, this.invokeFailure});
 
   final Failure? failure;
+  final Failure? invokeFailure;
   int inspectCallCount = 0;
   int? lastMaxDepth;
   int? lastMaxElements;
   UiInspectionResult? _lastInspection;
+  int invokeCallCount = 0;
+  String? invokedWindowId;
+  String? invokedElementId;
 
   static final tree = <UiElement>[
     UiElement(
-      id: 'uia:test:0',
+      id: 'uia:abc:0',
       name: 'Test Window',
       controlType: UiControlType.window,
       isEnabled: true,
@@ -23,8 +27,8 @@ final class MockUiAutomation implements UiAutomation {
       supportedPatterns: const {},
     ),
     UiElement(
-      id: 'uia:test:1',
-      parentId: 'uia:test:0',
+      id: 'uia:abc:1',
+      parentId: 'uia:abc:0',
       name: 'Toolbar',
       controlType: UiControlType.unknown,
       isEnabled: true,
@@ -33,8 +37,8 @@ final class MockUiAutomation implements UiAutomation {
       depth: 1,
     ),
     UiElement(
-      id: 'uia:test:2',
-      parentId: 'uia:test:1',
+      id: 'uia:abc:2',
+      parentId: 'uia:abc:1',
       name: 'Save',
       automationId: 'saveButton',
       controlType: UiControlType.button,
@@ -46,8 +50,8 @@ final class MockUiAutomation implements UiAutomation {
       supportedPatterns: const {UiPattern.invoke},
     ),
     UiElement(
-      id: 'uia:test:3',
-      parentId: 'uia:test:1',
+      id: 'uia:abc:3',
+      parentId: 'uia:abc:1',
       name: 'Name',
       controlType: UiControlType.edit,
       isEnabled: true,
@@ -107,7 +111,33 @@ final class MockUiAutomation implements UiAutomation {
       }
     }
     return const Result.failure(
-      Failure('Element missing.', code: 'element_not_found'),
+      Failure('Element is stale.', code: 'stale_ui_element'),
+    );
+  }
+
+  @override
+  Future<Result<UiInvokeReceipt>> invoke(
+    String windowId,
+    String elementId,
+  ) async {
+    invokeCallCount++;
+    invokedWindowId = windowId;
+    invokedElementId = elementId;
+    if (invokeFailure case final failure?) {
+      return Result.failure(failure);
+    }
+    final elementResult = await getElement(elementId);
+    if (elementResult case Failed<UiElement>(:final failure)) {
+      return Result.failure(failure);
+    }
+    final element = (elementResult as Success<UiElement>).value;
+    if (!element.supportedPatterns.contains(UiPattern.invoke)) {
+      return const Result.failure(
+        Failure('Invoke is not supported.', code: 'invoke_not_supported'),
+      );
+    }
+    return Result.success(
+      UiInvokeReceipt(windowId: windowId, elementId: elementId),
     );
   }
 }

@@ -6,10 +6,11 @@ have not been decided.
 
 ## Current milestone and capability
 
-Milestone 3A adds read-only inspection of the Microsoft UI Automation control
-tree inside a discovered top-level window. Existing window control, discovery,
-and Chrome launch remain available. All capabilities use structured,
-permission-checked commands without an LLM or arbitrary shell input.
+Milestone 3B.1 adds the first semantic UI action: invoking a freshly inspected
+element that supports Microsoft UI Automation's Invoke pattern. Existing UI
+inspection, window control/discovery, and Chrome launch remain available. All
+capabilities use structured, permission-checked commands without an LLM or
+arbitrary shell input.
 
 The app currently uses a deterministic mock model provider and a temporary
 non-interactive Flutter shell.
@@ -93,6 +94,30 @@ The optional values are `maxDepth` and `maxElements`. Defaults are depth 3 and
 100 elements; hard ceilings are depth 10 and 500 elements. The command rejects
 IDs absent from a fresh discovery snapshot and performs no UI interaction.
 
+## Manual semantic Invoke
+
+Discover a window ID, then list freshly inspected, non-destructive Invoke
+candidates without taking action:
+
+```powershell
+dart run tool/invoke_ui.dart windows:window:1a2b3c --max-depth=5 --max-elements=100
+```
+
+Invoke one candidate only by its displayed numeric index and explicit
+confirmation:
+
+```powershell
+dart run tool/invoke_ui.dart windows:window:1a2b3c --max-depth=5 --max-elements=100 --select-index=0 --confirm-invoke
+```
+
+The utility never accepts an element ID. It excludes common destructive labels
+such as Close/Delete and rejects indices outside its fresh discovered list. To
+demonstrate stale-ID refusal without invoking anything:
+
+```powershell
+dart run tool/invoke_ui.dart windows:window:1a2b3c --select-index=0 --confirm-invoke --stale-test
+```
+
 ## Validate
 
 ```powershell
@@ -104,9 +129,10 @@ flutter build windows
 ## Current limitations
 
 The implemented Windows capabilities are limited to launching Chrome,
-top-level window discovery/control, and bounded read-only accessibility-tree
-inspection. There is no UI-element action, browser-specific automation,
-navigation, screenshot/OCR, keyboard/mouse automation, terminal execution,
-process termination, real AI provider, local model, voice feature, external
-integration, persistent/vector memory, or MCP networking. See
+top-level window discovery/control, bounded accessibility-tree inspection, and
+semantic Invoke. No other UI Automation pattern is executable. There is no
+browser-specific automation, navigation, screenshot/OCR, keyboard/mouse
+automation, terminal execution, process termination, real AI provider, local
+model, voice feature, external integration, persistent/vector memory, or MCP
+networking. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details.

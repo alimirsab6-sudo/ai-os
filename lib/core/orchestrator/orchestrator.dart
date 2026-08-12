@@ -74,6 +74,16 @@ final class InspectUiCommand extends OrchestratorCommand {
   final int maxElements;
 }
 
+final class InvokeUiElementCommand extends OrchestratorCommand {
+  const InvokeUiElementCommand({
+    required this.windowId,
+    required this.elementId,
+  });
+
+  final String windowId;
+  final String elementId;
+}
+
 /// Coordinates requests while keeping providers, agents, and tools replaceable.
 final class Orchestrator {
   Orchestrator({
@@ -185,6 +195,18 @@ final class Orchestrator {
               'max_depth': maxDepth,
               'max_elements': maxElements,
             },
+          ),
+        );
+      case InvokeUiElementCommand(:final windowId, :final elementId):
+        agentRequest = InvokeUiElementAgentRequest(
+          windowId: windowId,
+          elementId: elementId,
+        );
+        events.publish(
+          ApplicationEvent(
+            type: 'ui.invoke.requested',
+            occurredAt: DateTime.now().toUtc(),
+            data: {'window_id': windowId, 'element_id': elementId},
           ),
         );
     }

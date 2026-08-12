@@ -34,4 +34,12 @@ abstract interface class UiAutomation {
   Future<Result<List<UiElement>>> getChildren(String elementId);
   Future<Result<List<UiElement>>> findElements(UiElementQuery query);
   Future<Result<UiElement>> getElement(String elementId);
+  Future<Result<UiInvokeReceipt>> invoke(String windowId, String elementId);
+}
+
+final class UiInvokeReceipt {
+  const UiInvokeReceipt({required this.windowId, required this.elementId});
+
+  final String windowId;
+  final String elementId;
 }

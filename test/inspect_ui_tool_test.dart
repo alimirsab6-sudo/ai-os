@@ -19,7 +19,7 @@ void main() {
     expect((await automation.getRootElement(windowId)).isSuccess, isTrue);
     expect(
       (await automation.getChildren(
-        'uia:test:1',
+        'uia:abc:1',
       )).fold((elements) => elements.length, (_) => 0),
       2,
     );
@@ -29,7 +29,7 @@ void main() {
       )).fold((elements) => elements.single.name, (_) => null),
       'Save',
     );
-    expect((await automation.getElement('uia:test:2')).isSuccess, isTrue);
+    expect((await automation.getElement('uia:abc:2')).isSuccess, isTrue);
   });
 
   test('InspectUiTool returns structured element data', () async {

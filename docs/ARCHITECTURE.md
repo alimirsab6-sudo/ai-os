@@ -2,10 +2,10 @@
 
 ## Scope
 
-Milestone 3A retains the earlier boundaries and adds generic, read-only
-Microsoft UI Automation discovery inside a top-level window. Chrome launch,
-window discovery, and window control remain intact. The Flutter Windows runner
-remains unchanged, and platform-neutral models/interfaces remain plain Dart.
+Milestone 3B.1 retains the earlier boundaries and adds one semantic Microsoft
+UI Automation action: Invoke. Chrome launch, window discovery/control, and UI
+inspection remain intact. The Flutter Windows runner remains unchanged, and
+platform-neutral models/interfaces remain plain Dart.
 
 ## Layers and responsibilities
 
@@ -16,8 +16,8 @@ remains unchanged, and platform-neutral models/interfaces remain plain Dart.
 - `ai/model_provider/` defines provider-neutral conversations, responses, and
   future tool-call requests. Its mock provider supports deterministic tests.
 - `agents/` defines specialized coordinators. The PC Agent routes structured
-  launch, discovery, top-level window control, and bounded UI-inspection
-  requests to configured tools.
+  launch, discovery, top-level window control, bounded UI inspection, and
+  semantic Invoke requests to configured tools.
 - `tools/` defines structured metadata, input schemas, execution results, and
   the authorization gate. Windows application resolution and launching are
   isolated below `tools/windows/`; native Win32 details stay in the discovery
@@ -125,6 +125,25 @@ The route emits `ui.inspection.requested`, `ui.inspection.started`, and either
 `ui.inspection.succeeded` or `ui.inspection.failed`. Events identify the window
 and limits; successful completion also reports element count and truncation.
 
+Milestone 3B.1 adds:
+
+```text
+InvokeUiElementCommand(windowId, elementId)
+  -> Orchestrator
+  -> PC Agent
+  -> InvokeUiElementTool
+  -> PermissionAuthorizer(execute)
+  -> current WindowDiscovery validation
+  -> UiAutomation.invoke
+  -> fresh COM re-resolution and identity validation
+  -> IUIAutomationInvokePattern.Invoke
+```
+
+No model provider participates. Events are `ui.invoke.requested`,
+`ui.invoke.started`, and either `ui.invoke.succeeded` or `ui.invoke.failed`;
+each contains the target window ID and opaque element ID, and completion events
+include success/failure metadata.
+
 ## Agent and tool relationship
 
 An agent exposes the tools available to its responsibility and handles an
@@ -197,6 +216,10 @@ and query operations over the last inspection snapshot. It is generic and
 application-neutral: it has no browser, Chrome, website, or product-specific
 selector logic.
 
+`UiAutomation.invoke(windowId, elementId)` is its sole action operation. It
+returns a platform-neutral `UiInvokeReceipt`; no COM interface or native
+address crosses the boundary. Invoke requires `execute`, not `read`.
+
 ## Windows UI Automation implementation
 
 `WindowsUiAutomation` first validates the target against current
@@ -223,6 +246,31 @@ native allocations use scoped `calloc` cleanup; and COM is uninitialized on
 the worker that initialized it. Property/provider failures degrade individual
 values where safe, while initialization/root/traversal failures return
 structured `Result.failure` values.
+
+## Runtime identity and stale-element safety
+
+Public element IDs remain opaque, inspection-scoped values such as
+`uia:<session>:<ordinal>`. They are neither HWNDs, COM pointers, raw addresses,
+nor reusable global selectors. The Windows adapter privately associates each
+ID with:
+
+- its target window ID;
+- its control-view child-index path;
+- the UI Automation runtime-ID integer array; and
+- a semantic fingerprint: name, automation ID, class, and control type.
+
+On Invoke, the adapter first validates the top-level window against a fresh
+window snapshot. A new background COM worker resolves the window root, walks
+the recorded path, obtains the current runtime ID and properties, and requires
+an exact match. It then reacquires `UIA_InvokePatternId`, verifies support at
+action time, calls `IUIAutomationInvokePattern::Invoke`, and releases every
+interface. A missing mapping, changed path/runtime ID/fingerprint, missing
+pattern, or provider error returns a structured failure. Successful IDs are
+consumed, and every successful new inspection invalidates the previous
+inspection's IDs.
+
+This prevents a stale ordinal/path from silently targeting a replacement
+element when the UI changes between inspection and action.
 
 ## Application Registry and Windows launcher
 
@@ -274,6 +322,10 @@ UI inspection also requires `read`. `InspectUiTool` validates its input before
 authorization, then performs fresh window validation after authorization; the
 native adapter validates again before decoding the window handle. No COM
 inspection occurs when permission is denied.
+Semantic Invoke is an action and requires `execute`. `InvokeUiElementTool`
+validates both IDs before authorization; discovery, element checks, and COM
+Invoke occur only after authorization. The window ID is mandatory so an
+element mapping cannot be used against another window.
 Future consent prompts, audit logs, resource scopes, and persistent policies
 can implement `PermissionAuthorizer` without allowing tools to bypass it.
 
@@ -286,10 +338,10 @@ implementation is volatile and intentionally has no vector or cloud backend.
 
 ## Current limitations
 
-Only Chrome launch, window discovery/control, and bounded UI-element discovery
-are implemented. There is no UI pattern invocation, value setting, UI-element
-action, navigation, screenshot/OCR, browser-specific control, keyboard/mouse
-input, arbitrary process/terminal execution, process termination, or
-application arguments. Provider-driven execution, richer queries, persistent
-element references, and non-Windows automation implementations remain future
-work.
+Only Chrome launch, window discovery/control, bounded UI discovery, and Invoke
+are implemented. Value, Selection, Toggle, ExpandCollapse, Scroll, RangeValue,
+and Text actions are not implemented. There is no navigation, screenshot/OCR,
+browser-specific control, keyboard/mouse input, arbitrary process/terminal
+execution, process termination, or persistent element reference. Provider-
+driven execution, other semantic actions, and non-Windows automation remain
+future work.
