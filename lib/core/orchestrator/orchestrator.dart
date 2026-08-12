@@ -10,10 +10,12 @@ final class OrchestratorResponse {
   const OrchestratorResponse({
     required this.message,
     this.requestedToolCalls = const [],
+    this.data = const {},
   });
 
   final String message;
   final List<ModelToolCall> requestedToolCalls;
+  final Map<String, Object?> data;
 }
 
 sealed class OrchestratorCommand {
@@ -24,6 +26,14 @@ final class LaunchApplicationCommand extends OrchestratorCommand {
   const LaunchApplicationCommand({required this.applicationId});
 
   final String applicationId;
+}
+
+final class ListWindowsCommand extends OrchestratorCommand {
+  const ListWindowsCommand();
+}
+
+final class GetActiveWindowCommand extends OrchestratorCommand {
+  const GetActiveWindowCommand();
 }
 
 /// Coordinates requests while keeping providers, agents, and tools replaceable.
@@ -81,22 +91,29 @@ final class Orchestrator {
   Future<Result<OrchestratorResponse>> executeCommand(
     OrchestratorCommand command,
   ) async {
-    if (command is! LaunchApplicationCommand) {
-      return const Result.failure(
-        Failure('Unsupported command.', code: 'unsupported_command'),
-      );
+    final AgentRequest agentRequest;
+    switch (command) {
+      case LaunchApplicationCommand(:final applicationId):
+        agentRequest = LaunchApplicationAgentRequest(
+          applicationId: applicationId,
+        );
+        events.publish(
+          ApplicationEvent(
+            type: 'pc.command.requested',
+            occurredAt: DateTime.now().toUtc(),
+            data: {
+              'command': 'launch_application',
+              'application_id': applicationId,
+            },
+          ),
+        );
+      case ListWindowsCommand():
+        agentRequest = const ListWindowsAgentRequest();
+        _publishDiscoveryRequested('list_windows');
+      case GetActiveWindowCommand():
+        agentRequest = const GetActiveWindowAgentRequest();
+        _publishDiscoveryRequested('get_active_window');
     }
-
-    events.publish(
-      ApplicationEvent(
-        type: 'pc.command.requested',
-        occurredAt: DateTime.now().toUtc(),
-        data: {
-          'command': 'launch_application',
-          'application_id': command.applicationId,
-        },
-      ),
-    );
 
     final pcAgent = _findPcAgent();
     if (pcAgent == null) {
@@ -105,13 +122,22 @@ final class Orchestrator {
       );
     }
 
-    final result = await pcAgent.handle(
-      LaunchApplicationAgentRequest(applicationId: command.applicationId),
-    );
+    final result = await pcAgent.handle(agentRequest);
     return result.fold(
-      (response) =>
-          Result.success(OrchestratorResponse(message: response.message)),
+      (response) => Result.success(
+        OrchestratorResponse(message: response.message, data: response.data),
+      ),
       Result.failure,
+    );
+  }
+
+  void _publishDiscoveryRequested(String operation) {
+    events.publish(
+      ApplicationEvent(
+        type: 'window.discovery.requested',
+        occurredAt: DateTime.now().toUtc(),
+        data: {'operation': operation},
+      ),
     );
   }
 

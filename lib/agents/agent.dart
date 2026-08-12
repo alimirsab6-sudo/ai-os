@@ -11,6 +11,14 @@ final class LaunchApplicationAgentRequest extends AgentRequest {
   final String applicationId;
 }
 
+final class ListWindowsAgentRequest extends AgentRequest {
+  const ListWindowsAgentRequest();
+}
+
+final class GetActiveWindowAgentRequest extends AgentRequest {
+  const GetActiveWindowAgentRequest();
+}
+
 final class AgentResponse {
   const AgentResponse({required this.message, this.data = const {}});
 

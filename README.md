@@ -6,9 +6,9 @@ have not been decided.
 
 ## Current milestone and capability
 
-Milestone 1 adds the first real PC Agent capability: launch Google Chrome on
-Windows through a structured, permission-checked command. The implementation
-does not use an LLM and does not accept arbitrary executable or shell input.
+Milestone 2A adds read-only discovery of visible top-level Windows windows and
+the active window. Milestone 1 Chrome launch remains available. Both use
+structured, permission-checked commands without an LLM or arbitrary shell input.
 
 The app currently uses a deterministic mock model provider and a temporary
 non-interactive Flutter shell.
@@ -44,6 +44,17 @@ This development-only entry point always submits
 `LaunchApplicationCommand(applicationId: 'chrome')`. It cannot run a user-
 supplied command or launch an unregistered application.
 
+## Manual Windows discovery
+
+Query the actual desktop without taking screenshots or interacting with it:
+
+```powershell
+dart run tool/discover_windows.dart
+```
+
+The command prints the active window and visible titled top-level windows,
+including process metadata where Windows permits it.
+
 ## Validate
 
 ```powershell
@@ -54,8 +65,9 @@ flutter build windows
 
 ## Current limitations
 
-The only real computer-control operation is launching Chrome. There is no
-browser navigation, keyboard/mouse automation, terminal execution, real AI
+The implemented Windows capabilities are limited to launching Chrome and
+read-only window discovery. There is no browser navigation, screenshot/OCR,
+keyboard/mouse automation, terminal execution, process termination, real AI
 provider, local model, voice feature, external integration, persistent/vector
 memory, or MCP networking. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details.

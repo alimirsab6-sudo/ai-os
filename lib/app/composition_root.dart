@@ -18,6 +18,9 @@ import '../tools/windows/applications/application_registry.dart';
 import '../tools/windows/applications/windows_application_registry.dart';
 import '../tools/windows/applications/windows_process_launcher.dart';
 import '../tools/windows/launch_application_tool.dart';
+import '../tools/windows/discovery/window_discovery.dart';
+import '../tools/windows/discovery/windows_window_discovery.dart';
+import '../tools/windows/window_discovery_tools.dart';
 import 'service_registry.dart';
 
 final class CompositionRoot {
@@ -34,8 +37,21 @@ final class CompositionRoot {
       launcher: applicationLauncher,
       events: events,
     );
+    final windowDiscovery = WindowsWindowDiscovery(
+      applicationRegistry: applicationRegistry,
+    );
+    final listWindowsTool = ListWindowsTool(
+      discovery: windowDiscovery,
+      events: events,
+    );
+    final getActiveWindowTool = GetActiveWindowTool(
+      discovery: windowDiscovery,
+      events: events,
+    );
     final tools = <Tool>[
       launchApplicationTool,
+      listWindowsTool,
+      getActiveWindowTool,
       const FileToolPlaceholder(),
       const BrowserToolPlaceholder(),
       const TerminalToolPlaceholder(),
@@ -44,6 +60,8 @@ final class CompositionRoot {
       PcAgent(
         launchApplicationTool: launchApplicationTool,
         authorizer: authorizer,
+        listWindowsTool: listWindowsTool,
+        getActiveWindowTool: getActiveWindowTool,
       ),
     ];
     const provider = MockModelProvider(
@@ -56,6 +74,9 @@ final class CompositionRoot {
       ..register<ApplicationRegistry>(applicationRegistry)
       ..register<ApplicationLauncher>(applicationLauncher)
       ..register<LaunchApplicationTool>(launchApplicationTool)
+      ..register<WindowDiscovery>(windowDiscovery)
+      ..register<ListWindowsTool>(listWindowsTool)
+      ..register<GetActiveWindowTool>(getActiveWindowTool)
       ..register<MemoryStore>(InMemoryStore())
       ..register<McpGateway>(const DisabledMcpGateway())
       ..register<Skill>(const PlaceholderSkill())

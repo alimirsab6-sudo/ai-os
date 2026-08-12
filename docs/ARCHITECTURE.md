@@ -2,9 +2,10 @@
 
 ## Scope
 
-Milestone 1 retains the Milestone 0B boundaries and adds one real Windows
-capability: launching Chrome by stable application ID. The Flutter Windows
-runner remains unchanged, and domain abstractions remain plain Dart.
+Milestone 2A retains the earlier boundaries and adds read-only discovery of
+visible top-level windows and the active window. Chrome launch remains intact.
+The Flutter Windows runner remains unchanged, and platform-neutral models and
+interfaces remain plain Dart.
 
 ## Layers and responsibilities
 
@@ -14,11 +15,12 @@ runner remains unchanged, and domain abstractions remain plain Dart.
   authorization, and orchestration.
 - `ai/model_provider/` defines provider-neutral conversations, responses, and
   future tool-call requests. Its mock provider supports deterministic tests.
-- `agents/` defines specialized coordinators. The PC Agent accepts structured
-  requests and routes Chrome launch requests to `LaunchApplicationTool`.
+- `agents/` defines specialized coordinators. The PC Agent routes structured
+  launch, list-windows, and active-window requests to their configured tools.
 - `tools/` defines structured metadata, input schemas, execution results, and
   the authorization gate. Windows application resolution and launching are
-  isolated below `tools/windows/`; other category placeholders do nothing.
+  isolated below `tools/windows/`; native Win32 details stay in the discovery
+  adapter, and other category placeholders do nothing.
 - `memory/` defines storage operations and supplies a process-local map.
 - `skills/` represents reusable workflows with metadata and one entry point.
 - `mcp/` is a discovery boundary through which future MCP servers may expose
@@ -70,6 +72,22 @@ This route never calls `ModelProvider`. It emits `pc.command.requested`,
 `tool.started`, `tool.succeeded` or `tool.failed`, and, after success,
 `application.launched`.
 
+Milestone 2A adds two more deterministic routes:
+
+```text
+ListWindowsCommand / GetActiveWindowCommand
+  -> Orchestrator
+  -> PC Agent
+  -> ListWindowsTool / GetActiveWindowTool
+  -> PermissionAuthorizer(read)
+  -> WindowDiscovery
+  -> WindowsWindowDiscovery
+```
+
+These routes emit `window.discovery.requested`, followed by
+`window.discovery.started` and either `window.discovery.succeeded` or
+`window.discovery.failed`. They never consult `ModelProvider`.
+
 ## Agent and tool relationship
 
 An agent exposes the tools available to its responsibility and handles an
@@ -78,6 +96,29 @@ input schema, required permissions, and structured output. `AuthorizedTool`
 checks every requested permission before calling a concrete operation. The PC
 Agent performs no natural-language parsing; it accepts
 `LaunchApplicationAgentRequest` and exposes only its configured tools.
+
+## Window model and discovery
+
+`WindowInfo` is the platform-neutral desktop snapshot. It contains a runtime
+ID, title, process ID, optional process/application identifiers, visibility,
+minimized/maximized state, and active state. Its public contract contains no
+HWND, HANDLE, or other Windows-specific type.
+
+`WindowDiscovery` returns structured `Result` values from `listWindows()` and
+`getActiveWindow()`. `ListWindowsTool` and `GetActiveWindowTool` translate those
+models into structured tool output and require `read` permission.
+
+`WindowsWindowDiscovery` is the only Win32 implementation. Through Dart FFI it
+uses `EnumWindows`, `GetForegroundWindow`, visibility/window-state APIs,
+`GetWindowTextW`, `GetWindowThreadProcessId`, and
+`QueryFullProcessImageNameW`. It opens process handles with query-only access
+and closes every handle. Failure to read one process name leaves that optional
+field null; it does not fail the entire enumeration.
+
+Enumeration is limited to visible, titled top-level windows. It uses no screen
+capture, OCR, shell, PowerShell, external utility, or filesystem scan. The
+small Dart-team `ffi` package supplies native allocation and UTF-16 helpers;
+it is not an automation framework.
 
 ## Application Registry and Windows launcher
 
@@ -119,6 +160,8 @@ what it needs; `AuthorizedTool` submits a `PermissionRequest` before concrete
 execution. Launching Chrome requires `execute`, not `sensitive`. Resolution and
 process creation happen only after authorization succeeds. The current
 allow-list policy is deliberately small and local.
+Window discovery requires only `read`; native enumeration is not invoked when
+authorization is denied.
 Future consent prompts, audit logs, resource scopes, and persistent policies
 can implement `PermissionAuthorizer` without allowing tools to bypass it.
 
@@ -131,7 +174,8 @@ implementation is volatile and intentionally has no vector or cloud backend.
 
 ## Current limitations
 
-Only Chrome launch is implemented. There is no navigation, browser control,
-keyboard/mouse input, arbitrary process or terminal execution, application
-arguments, or discovery outside the fixed known paths. Provider-driven tool
-execution, other applications, and non-Windows launchers remain future work.
+Only Chrome launch and read-only window discovery are implemented. There is no
+navigation, screenshot/OCR, browser control, keyboard/mouse input, arbitrary
+process or terminal execution, process termination, or application arguments.
+Provider-driven tool execution, other application launchers, richer desktop
+metadata, and non-Windows discovery implementations remain future work.

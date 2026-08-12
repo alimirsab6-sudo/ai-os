@@ -17,12 +17,14 @@ final class ApplicationDescriptor {
     required this.displayName,
     required this.resolutionStrategy,
     required this.locations,
+    this.executableNames = const [],
   });
 
   final String id;
   final String displayName;
   final ExecutableResolutionStrategy resolutionStrategy;
   final List<ExecutableLocation> locations;
+  final List<String> executableNames;
 }
 
 final class ResolvedApplication {

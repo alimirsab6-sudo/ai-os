@@ -39,6 +39,7 @@ final class WindowsApplicationRegistry implements ApplicationRegistry {
         relativePath: r'Google\Chrome\Application\chrome.exe',
       ),
     ],
+    executableNames: ['chrome.exe'],
   );
 
   final Map<String, String> _environment;
