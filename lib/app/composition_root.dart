@@ -24,6 +24,9 @@ import '../tools/windows/window_discovery_tools.dart';
 import '../tools/windows/control/window_controller.dart';
 import '../tools/windows/control/windows_window_controller.dart';
 import '../tools/windows/window_control_tools.dart';
+import '../tools/windows/inspect_ui_tool.dart';
+import '../tools/windows/ui_automation/ui_automation.dart';
+import '../tools/windows/ui_automation/windows_ui_automation.dart';
 import 'service_registry.dart';
 
 final class CompositionRoot {
@@ -74,6 +77,12 @@ final class CompositionRoot {
       controller: windowController,
       events: events,
     );
+    final uiAutomation = WindowsUiAutomation(windowDiscovery: windowDiscovery);
+    final inspectUiTool = InspectUiTool(
+      uiAutomation: uiAutomation,
+      windowDiscovery: windowDiscovery,
+      events: events,
+    );
     final tools = <Tool>[
       launchApplicationTool,
       listWindowsTool,
@@ -83,6 +92,7 @@ final class CompositionRoot {
       maximizeWindowTool,
       restoreWindowTool,
       closeWindowTool,
+      inspectUiTool,
       const FileToolPlaceholder(),
       const BrowserToolPlaceholder(),
       const TerminalToolPlaceholder(),
@@ -98,6 +108,7 @@ final class CompositionRoot {
         maximizeWindowTool: maximizeWindowTool,
         restoreWindowTool: restoreWindowTool,
         closeWindowTool: closeWindowTool,
+        inspectUiTool: inspectUiTool,
       ),
     ];
     const provider = MockModelProvider(
@@ -119,6 +130,8 @@ final class CompositionRoot {
       ..register<MaximizeWindowTool>(maximizeWindowTool)
       ..register<RestoreWindowTool>(restoreWindowTool)
       ..register<CloseWindowTool>(closeWindowTool)
+      ..register<UiAutomation>(uiAutomation)
+      ..register<InspectUiTool>(inspectUiTool)
       ..register<MemoryStore>(InMemoryStore())
       ..register<McpGateway>(const DisabledMcpGateway())
       ..register<Skill>(const PlaceholderSkill())

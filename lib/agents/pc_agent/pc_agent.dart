@@ -4,6 +4,7 @@ import '../../tools/tool.dart';
 import '../../tools/windows/launch_application_tool.dart';
 import '../../tools/windows/window_discovery_tools.dart';
 import '../../tools/windows/window_control_tools.dart';
+import '../../tools/windows/inspect_ui_tool.dart';
 import '../agent.dart';
 
 /// Routes structured PC commands to explicitly exposed tools.
@@ -18,6 +19,7 @@ final class PcAgent implements Agent {
     this.maximizeWindowTool,
     this.restoreWindowTool,
     this.closeWindowTool,
+    this.inspectUiTool,
   });
 
   final LaunchApplicationTool launchApplicationTool;
@@ -29,6 +31,7 @@ final class PcAgent implements Agent {
   final MaximizeWindowTool? maximizeWindowTool;
   final RestoreWindowTool? restoreWindowTool;
   final CloseWindowTool? closeWindowTool;
+  final InspectUiTool? inspectUiTool;
 
   @override
   String get id => 'agent.pc';
@@ -49,6 +52,7 @@ final class PcAgent implements Agent {
     ?maximizeWindowTool,
     ?restoreWindowTool,
     ?closeWindowTool,
+    ?inspectUiTool,
   ];
 
   @override
@@ -79,6 +83,13 @@ final class PcAgent implements Agent {
     } else if (request is CloseWindowAgentRequest) {
       tool = closeWindowTool;
       input = {'window_id': request.windowId};
+    } else if (request is InspectUiAgentRequest) {
+      tool = inspectUiTool;
+      input = {
+        'window_id': request.windowId,
+        'max_depth': request.maxDepth,
+        'max_elements': request.maxElements,
+      };
     } else {
       tool = null;
       input = const {};

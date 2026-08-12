@@ -62,6 +62,18 @@ final class CloseWindowCommand extends WindowControlCommand {
   const CloseWindowCommand({required super.windowId});
 }
 
+final class InspectUiCommand extends OrchestratorCommand {
+  const InspectUiCommand({
+    required this.windowId,
+    required this.maxDepth,
+    required this.maxElements,
+  });
+
+  final String windowId;
+  final int maxDepth;
+  final int maxElements;
+}
+
 /// Coordinates requests while keeping providers, agents, and tools replaceable.
 final class Orchestrator {
   Orchestrator({
@@ -154,6 +166,27 @@ final class Orchestrator {
       case CloseWindowCommand(:final windowId):
         agentRequest = CloseWindowAgentRequest(windowId: windowId);
         _publishWindowControlRequested('close', windowId);
+      case InspectUiCommand(
+        :final windowId,
+        :final maxDepth,
+        :final maxElements,
+      ):
+        agentRequest = InspectUiAgentRequest(
+          windowId: windowId,
+          maxDepth: maxDepth,
+          maxElements: maxElements,
+        );
+        events.publish(
+          ApplicationEvent(
+            type: 'ui.inspection.requested',
+            occurredAt: DateTime.now().toUtc(),
+            data: {
+              'window_id': windowId,
+              'max_depth': maxDepth,
+              'max_elements': maxElements,
+            },
+          ),
+        );
     }
 
     final pcAgent = _findPcAgent();

@@ -45,6 +45,18 @@ final class CloseWindowAgentRequest extends WindowControlAgentRequest {
   const CloseWindowAgentRequest({required super.windowId});
 }
 
+final class InspectUiAgentRequest extends AgentRequest {
+  const InspectUiAgentRequest({
+    required this.windowId,
+    required this.maxDepth,
+    required this.maxElements,
+  });
+
+  final String windowId;
+  final int maxDepth;
+  final int maxElements;
+}
+
 final class AgentResponse {
   const AgentResponse({required this.message, this.data = const {}});
 
