@@ -21,7 +21,7 @@ void main() {
       (await automation.getChildren(
         'uia:abc:1',
       )).fold((elements) => elements.length, (_) => 0),
-      2,
+      3,
     );
     expect(
       (await automation.findElements(
@@ -46,7 +46,7 @@ void main() {
     expect(result.isSuccess, isTrue);
     expect(
       result.fold((output) => output.data['element_count'], (_) => null),
-      4,
+      5,
     );
     expect(automation.inspectCallCount, 1);
     await events.close();

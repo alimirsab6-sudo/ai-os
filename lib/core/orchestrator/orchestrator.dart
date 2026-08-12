@@ -84,6 +84,18 @@ final class InvokeUiElementCommand extends OrchestratorCommand {
   final String elementId;
 }
 
+final class SetUiElementValueCommand extends OrchestratorCommand {
+  const SetUiElementValueCommand({
+    required this.windowId,
+    required this.elementId,
+    required this.value,
+  });
+
+  final String windowId;
+  final String elementId;
+  final String value;
+}
+
 /// Coordinates requests while keeping providers, agents, and tools replaceable.
 final class Orchestrator {
   Orchestrator({
@@ -207,6 +219,27 @@ final class Orchestrator {
             type: 'ui.invoke.requested',
             occurredAt: DateTime.now().toUtc(),
             data: {'window_id': windowId, 'element_id': elementId},
+          ),
+        );
+      case SetUiElementValueCommand(
+        :final windowId,
+        :final elementId,
+        :final value,
+      ):
+        agentRequest = SetUiElementValueAgentRequest(
+          windowId: windowId,
+          elementId: elementId,
+          value: value,
+        );
+        events.publish(
+          ApplicationEvent(
+            type: 'ui.value.requested',
+            occurredAt: DateTime.now().toUtc(),
+            data: {
+              'operation': 'set_value',
+              'window_id': windowId,
+              'element_id': elementId,
+            },
           ),
         );
     }

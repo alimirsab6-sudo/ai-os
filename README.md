@@ -6,8 +6,9 @@ have not been decided.
 
 ## Current milestone and capability
 
-Milestone 3B.1 adds the first semantic UI action: invoking a freshly inspected
-element that supports Microsoft UI Automation's Invoke pattern. Existing UI
+Milestone 3B.2 adds semantic text replacement for freshly inspected writable
+elements that support Microsoft UI Automation's Value pattern. Semantic
+Invoke, existing UI
 inspection, window control/discovery, and Chrome launch remain available. All
 capabilities use structured, permission-checked commands without an LLM or
 arbitrary shell input.
@@ -118,6 +119,27 @@ demonstrate stale-ID refusal without invoking anything:
 dart run tool/invoke_ui.dart windows:window:1a2b3c --select-index=0 --confirm-invoke --stale-test
 ```
 
+## Manual semantic SetValue
+
+Open a harmless editable application such as Notepad, then list current
+windows and select one by its displayed numeric index:
+
+```powershell
+dart run tool/set_ui_value.dart
+dart run tool/set_ui_value.dart --window-index=3
+```
+
+Select a displayed non-password Value element. The utility asks for an exact
+`YES` confirmation and accepts the replacement text interactively:
+
+```powershell
+dart run tool/set_ui_value.dart --window-index=3 --element-index=0
+```
+
+It never accepts a window or element runtime ID, does not accept value text on
+the command line, and never prints the submitted value after entry. Add
+`--stale-test` to demonstrate safe stale-element refusal.
+
 ## Validate
 
 ```powershell
@@ -129,10 +151,14 @@ flutter build windows
 ## Current limitations
 
 The implemented Windows capabilities are limited to launching Chrome,
-top-level window discovery/control, bounded accessibility-tree inspection, and
-semantic Invoke. No other UI Automation pattern is executable. There is no
+top-level window discovery/control, bounded accessibility-tree inspection,
+semantic Invoke, and Value/SetValue. Selection, Toggle, ExpandCollapse, Scroll,
+RangeValue, and Text actions are not executable. There is no
 browser-specific automation, navigation, screenshot/OCR, keyboard/mouse
 automation, terminal execution, process termination, real AI provider, local
 model, voice feature, external integration, persistent/vector memory, or MCP
 networking. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details.
+
+Chrome profile discovery, profile selection/launching, browser session state,
+and a Browser Agent are future capabilities and are not implemented.

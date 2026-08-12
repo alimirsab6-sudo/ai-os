@@ -3,10 +3,11 @@ import 'package:ai_os/tools/windows/ui_automation/ui_automation.dart';
 import 'package:ai_os/tools/windows/ui_automation/ui_element.dart';
 
 final class MockUiAutomation implements UiAutomation {
-  MockUiAutomation({this.failure, this.invokeFailure});
+  MockUiAutomation({this.failure, this.invokeFailure, this.setValueFailure});
 
   final Failure? failure;
   final Failure? invokeFailure;
+  final Failure? setValueFailure;
   int inspectCallCount = 0;
   int? lastMaxDepth;
   int? lastMaxElements;
@@ -14,6 +15,10 @@ final class MockUiAutomation implements UiAutomation {
   int invokeCallCount = 0;
   String? invokedWindowId;
   String? invokedElementId;
+  int setValueCallCount = 0;
+  String? valueWindowId;
+  String? valueElementId;
+  String? setValueText;
 
   static final tree = <UiElement>[
     UiElement(
@@ -59,6 +64,19 @@ final class MockUiAutomation implements UiAutomation {
       isFocused: false,
       depth: 2,
       supportedPatterns: const {UiPattern.value},
+      isValueReadOnly: false,
+    ),
+    UiElement(
+      id: 'uia:abc:4',
+      parentId: 'uia:abc:1',
+      name: 'Read only',
+      controlType: UiControlType.edit,
+      isEnabled: true,
+      isVisible: true,
+      isFocused: false,
+      depth: 2,
+      supportedPatterns: const {UiPattern.value},
+      isValueReadOnly: true,
     ),
   ];
 
@@ -138,6 +156,39 @@ final class MockUiAutomation implements UiAutomation {
     }
     return Result.success(
       UiInvokeReceipt(windowId: windowId, elementId: elementId),
+    );
+  }
+
+  @override
+  Future<Result<UiSetValueReceipt>> setValue(
+    String windowId,
+    String elementId,
+    String value,
+  ) async {
+    setValueCallCount++;
+    valueWindowId = windowId;
+    valueElementId = elementId;
+    setValueText = value;
+    if (setValueFailure case final failure?) {
+      return Result.failure(failure);
+    }
+    final elementResult = await getElement(elementId);
+    if (elementResult case Failed<UiElement>(:final failure)) {
+      return Result.failure(failure);
+    }
+    final element = (elementResult as Success<UiElement>).value;
+    if (!element.supportedPatterns.contains(UiPattern.value)) {
+      return const Result.failure(
+        Failure('Value is not supported.', code: 'value_not_supported'),
+      );
+    }
+    if (element.isValueReadOnly == true) {
+      return const Result.failure(
+        Failure('Element is read-only.', code: 'value_read_only'),
+      );
+    }
+    return Result.success(
+      UiSetValueReceipt(windowId: windowId, elementId: elementId),
     );
   }
 }

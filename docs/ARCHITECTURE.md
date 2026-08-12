@@ -2,8 +2,8 @@
 
 ## Scope
 
-Milestone 3B.1 retains the earlier boundaries and adds one semantic Microsoft
-UI Automation action: Invoke. Chrome launch, window discovery/control, and UI
+Milestone 3B.2 retains the earlier boundaries and adds Microsoft UI Automation
+Value/SetValue. Invoke, Chrome launch, window discovery/control, and UI
 inspection remain intact. The Flutter Windows runner remains unchanged, and
 platform-neutral models/interfaces remain plain Dart.
 
@@ -17,7 +17,7 @@ platform-neutral models/interfaces remain plain Dart.
   future tool-call requests. Its mock provider supports deterministic tests.
 - `agents/` defines specialized coordinators. The PC Agent routes structured
   launch, discovery, top-level window control, bounded UI inspection, and
-  semantic Invoke requests to configured tools.
+  semantic Invoke and SetValue requests to configured tools.
 - `tools/` defines structured metadata, input schemas, execution results, and
   the authorization gate. Windows application resolution and launching are
   isolated below `tools/windows/`; native Win32 details stay in the discovery
@@ -144,6 +144,25 @@ No model provider participates. Events are `ui.invoke.requested`,
 each contains the target window ID and opaque element ID, and completion events
 include success/failure metadata.
 
+Milestone 3B.2 adds:
+
+```text
+SetUiElementValueCommand(windowId, elementId, value)
+  -> Orchestrator
+  -> PC Agent
+  -> SetUiElementValueTool
+  -> PermissionAuthorizer(write)
+  -> current WindowDiscovery and inspected-element validation
+  -> UiAutomation.setValue
+  -> fresh COM re-resolution and identity validation
+  -> IUIAutomationValuePattern.SetValue
+```
+
+No model provider participates. Events are `ui.value.requested`,
+`ui.value.started`, and either `ui.value.succeeded` or `ui.value.failed`.
+They contain operation, target IDs, success/failure, and sanitized error
+metadata only. The submitted value is never placed in an event or error log.
+
 ## Agent and tool relationship
 
 An agent exposes the tools available to its responsibility and handles an
@@ -198,7 +217,8 @@ termination API, inject input, invoke a shell, or run an external utility.
 
 `UiElement` is a platform-neutral snapshot containing an opaque, inspection-
 scoped runtime ID, optional parent ID, name, automation ID, common control type,
-class name, enabled/visible/focused state, depth, and discovered pattern names.
+class name, enabled/visible/focused/password state, Value read-only state,
+depth, and discovered pattern names.
 Element IDs look like `uia:<session>:<ordinal>` and deliberately do not expose
 COM pointers, UIA runtime arrays, or HWND values.
 
@@ -209,16 +229,22 @@ types map to `unknown` instead of failing inspection.
 
 `UiPattern` represents discoverable capability metadata only: Invoke, Value,
 Text, Selection, SelectionItem, Toggle, ExpandCollapse, Scroll, and RangeValue.
-No pattern is executed in this milestone.
+Only Invoke and Value are executable; all other pattern names are discovery
+metadata.
 
 `UiAutomation` exposes bounded window inspection plus root, children, element,
 and query operations over the last inspection snapshot. It is generic and
 application-neutral: it has no browser, Chrome, website, or product-specific
 selector logic.
 
-`UiAutomation.invoke(windowId, elementId)` is its sole action operation. It
-returns a platform-neutral `UiInvokeReceipt`; no COM interface or native
-address crosses the boundary. Invoke requires `execute`, not `read`.
+`UiAutomation.invoke(windowId, elementId)` and
+`UiAutomation.setValue(windowId, elementId, value)` are its action operations.
+SetValue returns a platform-neutral `UiSetValueReceipt` and exposes no entered
+text in that receipt. It is bounded to 1,048,576 UTF-16 code units so isolate
+messages and native BSTR allocations fail safely for pathological inputs
+without restricting ordinary text. Invoke returns a platform-neutral
+`UiInvokeReceipt`; no COM interface or native address crosses the boundary.
+Invoke requires `execute`; SetValue requires `write`.
 
 ## Windows UI Automation implementation
 
@@ -272,6 +298,13 @@ inspection's IDs.
 This prevents a stale ordinal/path from silently targeting a replacement
 element when the UI changes between inspection and action.
 
+SetValue uses the same identity resolution and one-shot ID rules, so it cannot
+weaken or bypass Invoke's stale-element protection. After a fresh match it
+reacquires `UIA_ValuePatternId`, reads the Value pattern's current read-only
+state, refuses unknown or read-only state, allocates a scoped BSTR, and calls
+`SetValue`. The worker releases the Value pattern and all other COM interfaces,
+frees the BSTR/native allocations, and uninitializes COM in every path.
+
 ## Application Registry and Windows launcher
 
 `ApplicationDescriptor` gives every launchable program a stable ID, display
@@ -305,6 +338,22 @@ the existing `Tool` contract, and translate execution inputs/results at the
 edge. To the orchestrator, built-in and MCP-discovered tools remain the same
 kind of object. No MCP networking or external server is present yet.
 
+## Future Browser Agent and Chrome profiles (not implemented)
+
+A future Browser Agent will sit above generic Windows UI Automation and any
+browser-specific tools. Generic UI Automation remains application-neutral and
+must not gain Chrome selectors, navigation semantics, or profile assumptions.
+
+Chrome profiles will use a dedicated future `ChromeProfileRegistry` that
+discovers local metadata, assigns stable AI OS profile IDs, keeps the human-
+readable name distinct from the actual profile directory, and never assumes a
+directory such as `Profile 1` means Personal or Work. A future
+`BrowserSession` will require the selected profile alongside its active window
+and browser state; profile-specific requests must not silently fall back to the
+default profile. Profile discovery/launching, browser session state,
+navigation, tabs, and the Browser Agent are FUTURE and were not implemented in
+Milestone 3B.2.
+
 ## Security boundary
 
 Permissions are `read`, `write`, `execute`, and `sensitive`. A tool declares
@@ -326,6 +375,13 @@ Semantic Invoke is an action and requires `execute`. `InvokeUiElementTool`
 validates both IDs before authorization; discovery, element checks, and COM
 Invoke occur only after authorization. The window ID is mandatory so an
 element mapping cannot be used against another window.
+Semantic SetValue is a write operation and requires `write`, which is not
+silently added to `AppConfiguration.defaults()`. The manual development utility
+creates a scoped read/write configuration only for its explicit test flow.
+Authorization occurs before discovery, element resolution, or COM SetValue.
+Value lifecycle events are projected from target IDs and operation metadata;
+neither success nor failure events receive the submitted text, and failure
+messages are sanitized.
 Future consent prompts, audit logs, resource scopes, and persistent policies
 can implement `PermissionAuthorizer` without allowing tools to bypass it.
 
@@ -338,9 +394,9 @@ implementation is volatile and intentionally has no vector or cloud backend.
 
 ## Current limitations
 
-Only Chrome launch, window discovery/control, bounded UI discovery, and Invoke
-are implemented. Value, Selection, Toggle, ExpandCollapse, Scroll, RangeValue,
-and Text actions are not implemented. There is no navigation, screenshot/OCR,
+Only Chrome launch, window discovery/control, bounded UI discovery, Invoke,
+and Value/SetValue are implemented. Selection, Toggle, ExpandCollapse, Scroll,
+RangeValue, and Text actions are not implemented. There is no navigation, screenshot/OCR,
 browser-specific control, keyboard/mouse input, arbitrary process/terminal
 execution, process termination, or persistent element reference. Provider-
 driven execution, other semantic actions, and non-Windows automation remain

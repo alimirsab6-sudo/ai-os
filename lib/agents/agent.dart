@@ -67,6 +67,18 @@ final class InvokeUiElementAgentRequest extends AgentRequest {
   final String elementId;
 }
 
+final class SetUiElementValueAgentRequest extends AgentRequest {
+  const SetUiElementValueAgentRequest({
+    required this.windowId,
+    required this.elementId,
+    required this.value,
+  });
+
+  final String windowId;
+  final String elementId;
+  final String value;
+}
+
 final class AgentResponse {
   const AgentResponse({required this.message, this.data = const {}});
 

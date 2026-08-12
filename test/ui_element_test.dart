@@ -14,6 +14,8 @@ void main() {
       isEnabled: true,
       isVisible: true,
       isFocused: false,
+      isPassword: true,
+      isValueReadOnly: false,
       depth: 1,
       supportedPatterns: const {UiPattern.invoke},
     );
@@ -23,6 +25,8 @@ void main() {
     expect(restored.id, 'uia:session:1');
     expect(restored.parentId, 'uia:session:0');
     expect(restored.controlType, UiControlType.button);
+    expect(restored.isPassword, isTrue);
+    expect(restored.isValueReadOnly, isFalse);
     expect(restored.supportedPatterns, {UiPattern.invoke});
   });
 

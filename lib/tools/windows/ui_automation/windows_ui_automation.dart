@@ -229,6 +229,68 @@ final class WindowsUiAutomation implements UiAutomation {
     }
   }
 
+  @override
+  Future<Result<UiSetValueReceipt>> setValue(
+    String windowId,
+    String elementId,
+    String value,
+  ) async {
+    if (value.length > UiValueLimits.maximumCodeUnits) {
+      return const Result.failure(
+        Failure(
+          'The supplied value exceeds the supported size limit.',
+          code: 'value_too_large',
+        ),
+      );
+    }
+    if (!Platform.isWindows) {
+      return const Result.failure(
+        Failure(
+          'UI value operations are currently supported only on Windows.',
+          code: 'unsupported_platform',
+        ),
+      );
+    }
+    final locator = _elementLocators[elementId];
+    if (locator == null || locator.windowId != windowId) {
+      return const Result.failure(
+        Failure(
+          'The UI element is stale or does not belong to the target window.',
+          code: 'stale_ui_element',
+        ),
+      );
+    }
+    final handleResult = await _resolveCurrentHandle(windowId);
+    if (handleResult case Failed<int>(:final failure)) {
+      return Result.failure(failure);
+    }
+    try {
+      final nativeResult = await Isolate.run(
+        () => _setNativeElementValue(
+          (handleResult as Success<int>).value,
+          locator.toMap(),
+          value,
+        ),
+      );
+      if (nativeResult['failure'] case final String message) {
+        return Result.failure(
+          Failure(message, code: nativeResult['failure_code'] as String?),
+        );
+      }
+      _elementLocators.remove(elementId);
+      return Result.success(
+        UiSetValueReceipt(windowId: windowId, elementId: elementId),
+      );
+    } on Object {
+      return const Result.failure(
+        Failure(
+          'Windows UI value operation failed.',
+          code: 'ui_set_value_failed',
+        ),
+      );
+    }
+  }
+
   Failure? _validateLimits(int maxDepth, int maxElements) {
     if (maxDepth < 0 || maxDepth > UiTraversalLimits.maximumDepth) {
       return const Failure(
@@ -402,6 +464,7 @@ Map<String, Object?> _readElement(
   final controlType = WindowsUiAutomationMappings.controlTypeFromId(
     _getIntProperty(element, 21),
   );
+  final supportedPatterns = _getSupportedPatterns(element);
   return {
     'id': id,
     'parent_id': parentId,
@@ -412,11 +475,48 @@ Map<String, Object?> _readElement(
     'is_enabled': _getBoolProperty(element, 28),
     'is_visible': !_getBoolProperty(element, 38),
     'is_focused': _getBoolProperty(element, 26),
+    'is_password': _getBoolProperty(element, 35),
+    'is_value_read_only': supportedPatterns.contains(UiPattern.value.name)
+        ? _getValueReadOnlyState(element)
+        : null,
     'depth': depth,
-    'supported_patterns': _getSupportedPatterns(element),
+    'supported_patterns': supportedPatterns,
     '_path': path,
     '_runtime_id': _getRuntimeId(element),
   };
+}
+
+bool? _getValueReadOnlyState(Pointer<Void> element) {
+  Pointer<Void> valuePattern = nullptr;
+  final patternOutput = calloc<Pointer<Void>>();
+  try {
+    final getPattern = _method(
+      element,
+      16,
+    ).cast<NativeFunction<_GetPatternNative>>().asFunction<_GetPatternDart>();
+    if (getPattern(element, 10002, patternOutput) < 0 ||
+        patternOutput.value == nullptr) {
+      return null;
+    }
+    valuePattern = patternOutput.value;
+    final readOnlyOutput = calloc<Int32>();
+    try {
+      final getReadOnly = _method(
+        valuePattern,
+        5,
+      ).cast<NativeFunction<_GetIntNative>>().asFunction<_GetIntDart>();
+      return getReadOnly(valuePattern, readOnlyOutput) >= 0
+          ? readOnlyOutput.value != 0
+          : null;
+    } finally {
+      calloc.free(readOnlyOutput);
+    }
+  } on Object {
+    return null;
+  } finally {
+    if (valuePattern != nullptr) _release(valuePattern);
+    calloc.free(patternOutput);
+  }
 }
 
 List<int> _getRuntimeId(Pointer<Void> element) {
@@ -576,6 +676,164 @@ Map<String, Object?> _invokeNativeElement(
     );
   } finally {
     if (invokePattern != nullptr) _release(invokePattern);
+    if (element != nullptr) _release(element);
+    if (walker != nullptr) _release(walker);
+    if (automation != nullptr) _release(automation);
+    if (shouldUninitialize) api.coUninitialize();
+  }
+}
+
+Map<String, Object?> _setNativeElementValue(
+  int windowHandle,
+  Map<String, Object?> locator,
+  String value,
+) {
+  final api = _ComApi();
+  final initializeResult = api.coInitializeEx(nullptr, 0);
+  final shouldUninitialize = initializeResult >= 0;
+  if (initializeResult < 0 && initializeResult != _rpcChangedMode) {
+    return _nativeFailureMessage(
+      'COM initialization failed with HRESULT ${_hresult(initializeResult)}.',
+      'ui_set_value_failed',
+    );
+  }
+
+  Pointer<Void> automation = nullptr;
+  Pointer<Void> walker = nullptr;
+  Pointer<Void> element = nullptr;
+  Pointer<Void> valuePattern = nullptr;
+  Pointer<Utf16> nativeValue = nullptr;
+  try {
+    final automationResult = api.createAutomation();
+    if (automationResult case Failed<Pointer<Void>>(:final failure)) {
+      return {'failure': failure.message, 'failure_code': failure.code};
+    }
+    automation = (automationResult as Success<Pointer<Void>>).value;
+    element = _elementFromHandle(automation, windowHandle);
+    if (element == nullptr) {
+      return _nativeFailureMessage(
+        'The target window no longer exposes a UI Automation root.',
+        'stale_ui_element',
+      );
+    }
+    walker = _controlViewWalker(automation);
+    if (walker == nullptr) {
+      return _nativeFailureMessage(
+        'UI Automation control-view walker is unavailable.',
+        'ui_set_value_failed',
+      );
+    }
+
+    for (final childIndex in (locator['path']! as List<Object?>).cast<int>()) {
+      var nextElement = _firstChild(walker, element);
+      if (nextElement == nullptr) {
+        return _nativeFailureMessage(
+          'The UI element no longer exists at its inspected location.',
+          'stale_ui_element',
+        );
+      }
+      for (var index = 0; index < childIndex; index++) {
+        final sibling = _nextSibling(walker, nextElement);
+        _release(nextElement);
+        nextElement = sibling;
+        if (nextElement == nullptr) {
+          return _nativeFailureMessage(
+            'The UI element no longer exists at its inspected location.',
+            'stale_ui_element',
+          );
+        }
+      }
+      _release(element);
+      element = nextElement;
+    }
+
+    final expectedRuntimeId = (locator['runtime_id']! as List<Object?>)
+        .cast<int>();
+    final currentRuntimeId = _getRuntimeId(element);
+    if (expectedRuntimeId.isEmpty ||
+        currentRuntimeId.isEmpty ||
+        !_sameInts(expectedRuntimeId, currentRuntimeId) ||
+        !_matchesFingerprint(element, locator)) {
+      return _nativeFailureMessage(
+        'The UI element changed or is stale.',
+        'stale_ui_element',
+      );
+    }
+
+    final patternOutput = calloc<Pointer<Void>>();
+    try {
+      final getPattern = _method(
+        element,
+        16,
+      ).cast<NativeFunction<_GetPatternNative>>().asFunction<_GetPatternDart>();
+      if (getPattern(element, 10002, patternOutput) < 0 ||
+          patternOutput.value == nullptr) {
+        return _nativeFailureMessage(
+          'The UI element does not support the Value pattern.',
+          'value_not_supported',
+        );
+      }
+      valuePattern = patternOutput.value;
+    } finally {
+      calloc.free(patternOutput);
+    }
+
+    final readOnlyOutput = calloc<Int32>();
+    try {
+      final getReadOnly = _method(
+        valuePattern,
+        5,
+      ).cast<NativeFunction<_GetIntNative>>().asFunction<_GetIntDart>();
+      final readOnlyResult = getReadOnly(valuePattern, readOnlyOutput);
+      if (readOnlyResult < 0) {
+        return _nativeFailureMessage(
+          'The UI Automation read-only state could not be determined.',
+          'value_state_unavailable',
+        );
+      }
+      if (readOnlyOutput.value != 0) {
+        return _nativeFailureMessage(
+          'The UI element is read-only.',
+          'value_read_only',
+        );
+      }
+    } finally {
+      calloc.free(readOnlyOutput);
+    }
+
+    final source = value.toNativeUtf16();
+    try {
+      nativeValue = _ComApi.allocateString(source, value.length);
+    } finally {
+      calloc.free(source);
+    }
+    if (nativeValue == nullptr) {
+      return _nativeFailureMessage(
+        'The UI value could not be prepared.',
+        'ui_set_value_failed',
+      );
+    }
+    final setValue = _method(
+      valuePattern,
+      3,
+    ).cast<NativeFunction<_SetValueNative>>().asFunction<_SetValueDart>();
+    final setResult = setValue(valuePattern, nativeValue);
+    if (setResult < 0) {
+      return _nativeFailureMessage(
+        'The UI Automation SetValue operation failed with HRESULT '
+            '${_hresult(setResult)}.',
+        'ui_set_value_failed',
+      );
+    }
+    return {'success': true};
+  } on Object {
+    return _nativeFailureMessage(
+      'Native UI value operation failed.',
+      'ui_set_value_failed',
+    );
+  } finally {
+    if (nativeValue != nullptr) _ComApi.freeString(nativeValue);
+    if (valuePattern != nullptr) _release(valuePattern);
     if (element != nullptr) _release(element);
     if (walker != nullptr) _release(walker);
     if (automation != nullptr) _release(automation);
@@ -743,6 +1001,8 @@ Map<String, Object?> _nativeFailureMessage(String message, String code) => {
   'failure_code': code,
 };
 
+String _hresult(int value) => '0x${value.toUnsigned(32).toRadixString(16)}';
+
 final class _PendingElement {
   const _PendingElement(
     this.pointer, {
@@ -824,6 +1084,13 @@ final class _ComApi {
   static final _SysFreeStringDart freeString = DynamicLibrary.open(
     'oleaut32.dll',
   ).lookupFunction<_SysFreeStringNative, _SysFreeStringDart>('SysFreeString');
+
+  static final _SysAllocStringLenDart allocateString =
+      DynamicLibrary.open(
+        'oleaut32.dll',
+      ).lookupFunction<_SysAllocStringLenNative, _SysAllocStringLenDart>(
+        'SysAllocStringLen',
+      );
 
   static final _SysStringLengthDart sysStringLength =
       DynamicLibrary.open(
@@ -998,10 +1265,18 @@ typedef _GetRuntimeIdDart =
     int Function(Pointer<Void> element, Pointer<Pointer<Void>> output);
 typedef _InvokeNative = Int32 Function(Pointer<Void> pattern);
 typedef _InvokeDart = int Function(Pointer<Void> pattern);
+typedef _SetValueNative =
+    Int32 Function(Pointer<Void> pattern, Pointer<Utf16> value);
+typedef _SetValueDart =
+    int Function(Pointer<Void> pattern, Pointer<Utf16> value);
 typedef _ReleaseNative = Uint32 Function(Pointer<Void> object);
 typedef _ReleaseDart = int Function(Pointer<Void> object);
 typedef _SysFreeStringNative = Void Function(Pointer<Utf16> string);
 typedef _SysFreeStringDart = void Function(Pointer<Utf16> string);
+typedef _SysAllocStringLenNative =
+    Pointer<Utf16> Function(Pointer<Utf16> source, Uint32 length);
+typedef _SysAllocStringLenDart =
+    Pointer<Utf16> Function(Pointer<Utf16> source, int length);
 typedef _SysStringLengthNative = Uint32 Function(Pointer<Utf16> string);
 typedef _SysStringLengthDart = int Function(Pointer<Utf16> string);
 typedef _SafeArrayGetBoundNative =

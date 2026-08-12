@@ -43,6 +43,8 @@ final class UiElement {
     required this.isVisible,
     required this.isFocused,
     required this.depth,
+    this.isPassword = false,
+    this.isValueReadOnly,
     this.parentId,
     this.automationId,
     this.className,
@@ -58,6 +60,8 @@ final class UiElement {
   final bool isEnabled;
   final bool isVisible;
   final bool isFocused;
+  final bool isPassword;
+  final bool? isValueReadOnly;
   final int depth;
   final Set<UiPattern> supportedPatterns;
 
@@ -71,6 +75,8 @@ final class UiElement {
     'is_enabled': isEnabled,
     'is_visible': isVisible,
     'is_focused': isFocused,
+    'is_password': isPassword,
+    'is_value_read_only': isValueReadOnly,
     'depth': depth,
     'supported_patterns': supportedPatterns
         .map((pattern) => pattern.name)
@@ -87,6 +93,8 @@ final class UiElement {
     isEnabled: map['is_enabled']! as bool,
     isVisible: map['is_visible']! as bool,
     isFocused: map['is_focused']! as bool,
+    isPassword: map['is_password'] as bool? ?? false,
+    isValueReadOnly: map['is_value_read_only'] as bool?,
     depth: map['depth']! as int,
     supportedPatterns: (map['supported_patterns']! as List<Object?>)
         .cast<String>()
