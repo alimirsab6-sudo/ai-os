@@ -80,7 +80,7 @@ final class LaunchApplicationTool extends AuthorizedTool {
           data: {
             'application_id': receipt.applicationId,
             'display_name': application.descriptor.displayName,
-            'process_id': receipt.processId,
+            'process_id': ?receipt.processId,
           },
           summary: '${application.descriptor.displayName} opened successfully.',
         ),

@@ -36,6 +36,32 @@ void main() {
     await events.close();
   });
 
+  test('accepts HTTP and emits ordered lifecycle events', () async {
+    final events = EventBus();
+    final eventTypes = <String>[];
+    final subscription = events.events.listen(
+      (event) => eventTypes.add(event.type),
+    );
+    final launcher = _MockUrlLauncher();
+    final tool = OpenUrlTool(launcher: launcher, events: events);
+
+    final result = await tool.execute(
+      const {'url': 'http://example.com'},
+      ToolExecutionContext(
+        authorizer: AllowListPermissionAuthorizer({Permission.execute}),
+      ),
+    );
+
+    expect(result.isSuccess, isTrue);
+    expect(eventTypes, [
+      'tool.started',
+      'tool.succeeded',
+      'browser.url.opened',
+    ]);
+    await subscription.cancel();
+    await events.close();
+  });
+
   test('rejects unsafe schemes before launch', () async {
     final events = EventBus();
     final launcher = _MockUrlLauncher();
@@ -49,6 +75,7 @@ void main() {
     );
 
     expect(result.isFailure, isTrue);
+    expect(result.fold((_) => null, (failure) => failure.code), 'invalid_url');
     expect(launcher.launchedUrl, isNull);
     await events.close();
   });

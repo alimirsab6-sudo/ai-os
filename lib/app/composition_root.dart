@@ -51,6 +51,10 @@ final class CompositionRoot {
     final events = EventBus();
     final authorizer = AllowListPermissionAuthorizer(config.permissions);
     final applicationRegistry = WindowsApplicationRegistry();
+    final applicationAliases = Map<String, String>.unmodifiable({
+      for (final application in applicationRegistry.listKnownApplications())
+        for (final alias in application.aliases) alias: application.id,
+    });
     final chromeInstallationResolver = WindowsChromeInstallationResolver(
       applications: applicationRegistry,
     );
@@ -218,7 +222,9 @@ final class CompositionRoot {
           events: events,
           agents: agents,
           tools: tools,
-          commandInterpreter: const DeterministicCommandInterpreter(),
+          commandInterpreter: DeterministicCommandInterpreter(
+            applicationAliases: applicationAliases,
+          ),
         ),
       );
   }

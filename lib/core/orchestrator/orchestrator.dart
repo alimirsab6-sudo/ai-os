@@ -120,46 +120,76 @@ abstract interface class CommandInterpreter {
 /// Recognizes only the explicit, controlled actions exposed by this phase.
 /// Unrecognized text never becomes a process or shell command.
 final class DeterministicCommandInterpreter implements CommandInterpreter {
-  const DeterministicCommandInterpreter();
+  const DeterministicCommandInterpreter({
+    this.applicationAliases = _defaultApplicationAliases,
+  });
 
-  static const Map<String, String> _applicationAliases = {
-    'open chrome': 'chrome',
-    'launch chrome': 'chrome',
-    'start chrome': 'chrome',
-    'open google chrome': 'chrome',
-    'open browser': 'chrome',
-    'open microsoft edge': 'edge',
-    'open edge': 'edge',
-    'launch edge': 'edge',
-    'open notepad': 'notepad',
-    'launch notepad': 'notepad',
-    'open calculator': 'calculator',
-    'open calc': 'calculator',
-    'open file explorer': 'file_explorer',
-    'open explorer': 'file_explorer',
-    'open my pc': 'file_explorer',
+  static const Map<String, String> _defaultApplicationAliases = {
+    'chrome': 'chrome',
+    'google chrome': 'chrome',
+    'browser': 'chrome',
+    'edge': 'edge',
+    'microsoft edge': 'edge',
+    'notepad': 'notepad',
+    'calculator': 'calculator',
+    'calc': 'calculator',
+    'file explorer': 'file_explorer',
+    'explorer': 'file_explorer',
+    'my pc': 'file_explorer',
+    'settings': 'settings',
+    'windows settings': 'settings',
+    'task manager': 'task_manager',
+    'tasks': 'task_manager',
+  };
+
+  static const Map<String, String> _directActionAliases = {
     'browse files': 'file_explorer',
     'show my files': 'file_explorer',
-    'open windows settings': 'settings',
-    'open settings': 'settings',
     'view tasks': 'task_manager',
-    'open task manager': 'task_manager',
   };
+
+  final Map<String, String> applicationAliases;
 
   @override
   Result<OrchestratorCommand> interpret(String request) {
-    final trimmed = request.trim();
-    final urlMatch = RegExp(
-      r'^(?:open|browse|go to|navigate to)\s+(https?://\S+)$',
+    var normalized = request.trim().replaceAll(RegExp(r'\s+'), ' ');
+    normalized = normalized.replaceAll(RegExp(r'[.!]+$'), '').trim();
+    normalized = normalized.replaceFirst(
+      RegExp(
+        r'^(?:please|could you please|can you please)\s+',
+        caseSensitive: false,
+      ),
+      '',
+    );
+
+    final directApplicationId = _directActionAliases[normalized.toLowerCase()];
+    if (directApplicationId != null) {
+      return Result.success(
+        LaunchApplicationCommand(applicationId: directApplicationId),
+      );
+    }
+
+    final actionMatch = RegExp(
+      r'^(open|launch|start|browse|go to|navigate to)\s+(.+)$',
       caseSensitive: false,
-    ).firstMatch(trimmed);
-    if (urlMatch != null) {
-      final candidate = urlMatch
-          .group(1)!
-          .replaceFirst(RegExp(r'[.,!?]+$'), '');
-      final url = Uri.tryParse(candidate);
-      if (url != null &&
-          (url.scheme == 'http' || url.scheme == 'https') &&
+    ).firstMatch(normalized);
+    if (actionMatch == null) return _unsupportedCommand();
+
+    final action = actionMatch.group(1)!.toLowerCase();
+    final target = actionMatch.group(2)!.trim();
+    final applicationId =
+        action == 'open' || action == 'launch' || action == 'start'
+        ? applicationAliases[target.toLowerCase()]
+        : null;
+    if (applicationId != null) {
+      return Result.success(
+        LaunchApplicationCommand(applicationId: applicationId),
+      );
+    }
+
+    final url = Uri.tryParse(target);
+    if (url != null && url.hasScheme) {
+      if ((url.scheme == 'http' || url.scheme == 'https') &&
           url.host.isNotEmpty &&
           url.userInfo.isEmpty) {
         return Result.success(OpenUrlCommand(url: url));
@@ -171,23 +201,12 @@ final class DeterministicCommandInterpreter implements CommandInterpreter {
         ),
       );
     }
-
-    var normalized = trimmed.toLowerCase();
-    normalized = normalized.replaceAll(RegExp(r'[.!?]+$'), '').trim();
-    normalized = normalized.replaceFirst(RegExp(r'^please\s+'), '');
-    final applicationId = _applicationAliases[normalized];
-    if (applicationId != null) {
-      return Result.success(
-        LaunchApplicationCommand(applicationId: applicationId),
-      );
-    }
-    return const Result.failure(
-      Failure(
-        'That command is not supported yet.',
-        code: 'unsupported_command',
-      ),
-    );
+    return _unsupportedCommand();
   }
+
+  Result<OrchestratorCommand> _unsupportedCommand() => const Result.failure(
+    Failure('That command is not supported yet.', code: 'unsupported_command'),
+  );
 }
 
 /// Coordinates requests while keeping providers, agents, and tools replaceable.

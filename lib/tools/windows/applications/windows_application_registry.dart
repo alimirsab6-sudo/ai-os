@@ -51,6 +51,7 @@ final class WindowsApplicationRegistry implements ApplicationRegistry {
         relativePath: r'Google\Chrome\Application\chrome.exe',
       ),
     ],
+    aliases: ['chrome', 'google chrome', 'browser'],
     executableNames: ['chrome.exe'],
   );
 
@@ -72,6 +73,7 @@ final class WindowsApplicationRegistry implements ApplicationRegistry {
         relativePath: r'Microsoft\Edge\Application\msedge.exe',
       ),
     ],
+    aliases: ['edge', 'microsoft edge'],
     executableNames: ['msedge.exe'],
   );
 
@@ -85,6 +87,7 @@ final class WindowsApplicationRegistry implements ApplicationRegistry {
         relativePath: r'System32\notepad.exe',
       ),
     ],
+    aliases: ['notepad'],
     executableNames: ['notepad.exe'],
   );
 
@@ -99,6 +102,7 @@ final class WindowsApplicationRegistry implements ApplicationRegistry {
             relativePath: r'System32\calc.exe',
           ),
         ],
+        aliases: ['calculator', 'calc'],
         executableNames: ['calc.exe', 'calculatorapp.exe'],
       );
 
@@ -113,6 +117,7 @@ final class WindowsApplicationRegistry implements ApplicationRegistry {
             relativePath: 'explorer.exe',
           ),
         ],
+        aliases: ['file explorer', 'explorer', 'my pc'],
         executableNames: ['explorer.exe'],
       );
 
@@ -126,6 +131,7 @@ final class WindowsApplicationRegistry implements ApplicationRegistry {
         relativePath: r'ImmersiveControlPanel\SystemSettings.exe',
       ),
     ],
+    aliases: ['settings', 'windows settings'],
     executableNames: ['systemsettings.exe'],
   );
 
@@ -140,7 +146,9 @@ final class WindowsApplicationRegistry implements ApplicationRegistry {
             relativePath: r'System32\Taskmgr.exe',
           ),
         ],
+        aliases: ['task manager', 'tasks'],
         executableNames: ['taskmgr.exe'],
+        launchStrategy: ApplicationLaunchStrategy.windowsRunAs,
       );
 
   final Map<String, String> _environment;

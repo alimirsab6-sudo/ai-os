@@ -19,19 +19,22 @@ import 'support/pc_agent_fakes.dart';
 final class _ControlledLauncher implements ApplicationLauncher {
   final Completer<Result<ApplicationLaunchReceipt>> completion = Completer();
   int launchCount = 0;
+  ResolvedApplication? launchedApplication;
 
   @override
   Future<Result<ApplicationLaunchReceipt>> launch(
     ResolvedApplication application,
   ) {
     launchCount++;
+    launchedApplication = application;
     return completion.future;
   }
 
   void succeed() {
+    final applicationId = launchedApplication?.descriptor.id ?? 'chrome';
     completion.complete(
-      const Result.success(
-        ApplicationLaunchReceipt(applicationId: 'chrome', processId: 42),
+      Result.success(
+        ApplicationLaunchReceipt(applicationId: applicationId, processId: 42),
       ),
     );
   }
@@ -56,7 +59,7 @@ Orchestrator _createOrchestrator(
     );
   }
   final tool = LaunchApplicationTool(
-    registry: createChromeRegistry(),
+    registry: createApplicationRegistry(),
     launcher: launcher,
     events: events,
   );
@@ -230,6 +233,75 @@ void main() {
     await tester.pump();
     _discardApprovedShellOverflows(tester);
     expect(states.last, AiCoreState.success);
+    await _disposeShell(tester, events);
+  });
+
+  testWidgets('Open My PC quick action routes to File Explorer', (
+    tester,
+  ) async {
+    final events = EventBus();
+    final launcher = _ControlledLauncher();
+    await tester.pumpWidget(
+      _desktopShell(orchestrator: _createOrchestrator(events, launcher)),
+    );
+    _discardApprovedShellOverflows(tester);
+
+    await tester.tap(find.byKey(const Key('quick-action-Open My PC')));
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+
+    expect(launcher.launchedApplication?.descriptor.id, 'file_explorer');
+    launcher.succeed();
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+    expect(find.text('File Explorer opened successfully.'), findsWidgets);
+    await _disposeShell(tester, events);
+  });
+
+  testWidgets('Browse Files uses the same controlled File Explorer path', (
+    tester,
+  ) async {
+    final events = EventBus();
+    final launcher = _ControlledLauncher();
+    await tester.pumpWidget(
+      _desktopShell(orchestrator: _createOrchestrator(events, launcher)),
+    );
+    _discardApprovedShellOverflows(tester);
+
+    await tester.tap(find.byKey(const Key('quick-action-Browse Files')));
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+
+    expect(launcher.launchedApplication?.descriptor.id, 'file_explorer');
+    launcher.succeed();
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+    expect(find.text('File Explorer opened successfully.'), findsWidgets);
+    await _disposeShell(tester, events);
+  });
+
+  testWidgets('Run Command remains safely unsupported', (tester) async {
+    final events = EventBus();
+    final launcher = _ControlledLauncher();
+    final states = <AiCoreState>[];
+    await tester.pumpWidget(
+      _desktopShell(
+        orchestrator: _createOrchestrator(events, launcher),
+        onCoreStateChanged: states.add,
+      ),
+    );
+    _discardApprovedShellOverflows(tester);
+
+    await tester.tap(find.byKey(const Key('quick-action-Run Command')));
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+
+    expect(launcher.launchCount, 0);
+    expect(
+      states,
+      containsAllInOrder([AiCoreState.thinking, AiCoreState.error]),
+    );
+    expect(find.text('That command is not supported yet'), findsWidgets);
     await _disposeShell(tester, events);
   });
 }

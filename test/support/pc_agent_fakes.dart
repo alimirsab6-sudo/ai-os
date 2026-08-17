@@ -10,6 +10,18 @@ WindowsApplicationRegistry createChromeRegistry({bool chromeExists = true}) {
   );
 }
 
+WindowsApplicationRegistry createApplicationRegistry({bool appsExist = true}) {
+  return WindowsApplicationRegistry(
+    environment: const {
+      'ProgramFiles': r'C:\Program Files',
+      'ProgramFiles(x86)': r'C:\Program Files (x86)',
+      'LOCALAPPDATA': r'C:\Users\test\AppData\Local',
+      'SystemRoot': r'C:\Windows',
+    },
+    fileExists: (_) => appsExist,
+  );
+}
+
 final class MockApplicationLauncher implements ApplicationLauncher {
   MockApplicationLauncher({this.shouldSucceed = true});
 
