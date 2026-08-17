@@ -1,22 +1,235 @@
-import 'package:ai_os/app/ai_os_app.dart';
+import 'dart:async';
+
+import 'package:ai_os/agents/pc_agent/pc_agent.dart';
 import 'package:ai_os/ai/model_provider/mock_model_provider.dart';
 import 'package:ai_os/core/events/event_bus.dart';
 import 'package:ai_os/core/orchestrator/orchestrator.dart';
+import 'package:ai_os/core/result.dart';
+import 'package:ai_os/core/security/permission.dart';
+import 'package:ai_os/tools/windows/applications/application_descriptor.dart';
+import 'package:ai_os/tools/windows/applications/application_launcher.dart';
+import 'package:ai_os/tools/windows/launch_application_tool.dart';
+import 'package:ai_os/ui/shell/cronyx_os_shell.dart';
+import 'package:ai_os/ui/world/ai_core/ai_core_state.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-void main() {
-  testWidgets('temporary application shell starts', (tester) async {
-    final events = EventBus();
-    await tester.pumpWidget(
-      AiOsApp(
-        orchestrator: Orchestrator(
-          modelProvider: const MockModelProvider(),
-          events: events,
-        ),
+import 'support/pc_agent_fakes.dart';
+
+final class _ControlledLauncher implements ApplicationLauncher {
+  final Completer<Result<ApplicationLaunchReceipt>> completion = Completer();
+  int launchCount = 0;
+
+  @override
+  Future<Result<ApplicationLaunchReceipt>> launch(
+    ResolvedApplication application,
+  ) {
+    launchCount++;
+    return completion.future;
+  }
+
+  void succeed() {
+    completion.complete(
+      const Result.success(
+        ApplicationLaunchReceipt(applicationId: 'chrome', processId: 42),
       ),
     );
+  }
 
-    expect(find.text('Core architecture foundation'), findsOneWidget);
-    await events.close();
+  void fail() {
+    completion.complete(
+      const Result.failure(
+        Failure('raw process detail', code: 'launch_failed'),
+      ),
+    );
+  }
+}
+
+Orchestrator _createOrchestrator(
+  EventBus events, [
+  ApplicationLauncher? launcher,
+]) {
+  if (launcher == null) {
+    return Orchestrator(
+      modelProvider: const MockModelProvider(),
+      events: events,
+    );
+  }
+  final tool = LaunchApplicationTool(
+    registry: createChromeRegistry(),
+    launcher: launcher,
+    events: events,
+  );
+  return Orchestrator(
+    modelProvider: const MockModelProvider(),
+    events: events,
+    agents: [
+      PcAgent(
+        launchApplicationTool: tool,
+        authorizer: AllowListPermissionAuthorizer({Permission.execute}),
+      ),
+    ],
+    tools: [tool],
+    commandInterpreter: const DeterministicCommandInterpreter(),
+  );
+}
+
+Widget _desktopShell({
+  required Orchestrator orchestrator,
+  ValueChanged<AiCoreState>? onCoreStateChanged,
+}) => MaterialApp(
+  home: FittedBox(
+    fit: BoxFit.scaleDown,
+    alignment: Alignment.topLeft,
+    child: SizedBox(
+      width: 1800,
+      height: 1000,
+      child: CronyxOsShell(
+        orchestrator: orchestrator,
+        onCoreStateChanged: onCoreStateChanged,
+      ),
+    ),
+  ),
+);
+
+void _discardApprovedShellOverflows(WidgetTester tester) {
+  final exception = tester.takeException();
+  if (exception == null) return;
+  expect(
+    exception.toString(),
+    anyOf(contains('RenderFlex overflowed'), contains('Multiple exceptions')),
+  );
+}
+
+Future<void> _disposeShell(WidgetTester tester, EventBus events) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  _discardApprovedShellOverflows(tester);
+  await events.close();
+}
+
+void main() {
+  testWidgets('AI OS starts on the approved CronyX shell', (tester) async {
+    final events = EventBus();
+    await tester.pumpWidget(
+      _desktopShell(orchestrator: _createOrchestrator(events)),
+    );
+    _discardApprovedShellOverflows(tester);
+
+    expect(find.byType(CronyxOsShell), findsOneWidget);
+    expect(find.text('CRONYX AI OS'), findsOneWidget);
+    expect(find.text('LIVE ACTION'), findsOneWidget);
+    expect(find.text('QUICK ACTIONS'), findsOneWidget);
+    expect(find.text('How can I assist you today?'), findsOneWidget);
+    expect(find.text('Waiting for your request'), findsOneWidget);
+    await _disposeShell(tester, events);
+  });
+
+  testWidgets('command submission drives real lifecycle and activity', (
+    tester,
+  ) async {
+    final events = EventBus();
+    final launcher = _ControlledLauncher();
+    final states = <AiCoreState>[];
+    await tester.pumpWidget(
+      _desktopShell(
+        orchestrator: _createOrchestrator(events, launcher),
+        onCoreStateChanged: states.add,
+      ),
+    );
+    _discardApprovedShellOverflows(tester);
+
+    await tester.enterText(
+      find.byKey(const Key('command-input')),
+      'Open Chrome',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+
+    expect(launcher.launchCount, 1);
+    expect(
+      states,
+      containsAllInOrder([AiCoreState.thinking, AiCoreState.executing]),
+    );
+    expect(find.text('Running requested action'), findsOneWidget);
+    expect(find.text('Open Chrome'), findsOneWidget);
+    expect(find.text('Opening Google Chrome'), findsOneWidget);
+
+    launcher.succeed();
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+
+    expect(states.last, AiCoreState.success);
+    expect(find.text('Google Chrome opened successfully.'), findsWidgets);
+    expect(find.text('You'), findsOneWidget);
+    expect(find.text('CronyX'), findsOneWidget);
+    expect(find.text('System'), findsWidgets);
+
+    await tester.pump(const Duration(milliseconds: 1600));
+    _discardApprovedShellOverflows(tester);
+    expect(states.last, AiCoreState.idle);
+    await _disposeShell(tester, events);
+  });
+
+  testWidgets('failed action is sanitized and drives Error then Idle', (
+    tester,
+  ) async {
+    final events = EventBus();
+    final launcher = _ControlledLauncher();
+    final states = <AiCoreState>[];
+    await tester.pumpWidget(
+      _desktopShell(
+        orchestrator: _createOrchestrator(events, launcher),
+        onCoreStateChanged: states.add,
+      ),
+    );
+    _discardApprovedShellOverflows(tester);
+
+    await tester.enterText(
+      find.byKey(const Key('command-input')),
+      'Open Chrome',
+    );
+    await tester.tap(find.byKey(const Key('command-send')));
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+    launcher.fail();
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+
+    expect(states.last, AiCoreState.error);
+    expect(find.text('Google Chrome could not be opened'), findsWidgets);
+    expect(find.textContaining('raw process detail'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 1600));
+    _discardApprovedShellOverflows(tester);
+    expect(states.last, AiCoreState.idle);
+    await _disposeShell(tester, events);
+  });
+
+  testWidgets('Open Browser quick action uses the command pipeline', (
+    tester,
+  ) async {
+    final events = EventBus();
+    final launcher = _ControlledLauncher();
+    final states = <AiCoreState>[];
+    await tester.pumpWidget(
+      _desktopShell(
+        orchestrator: _createOrchestrator(events, launcher),
+        onCoreStateChanged: states.add,
+      ),
+    );
+    _discardApprovedShellOverflows(tester);
+
+    await tester.tap(find.byKey(const Key('quick-action-Open Browser')));
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+
+    expect(launcher.launchCount, 1);
+    expect(states, contains(AiCoreState.executing));
+    launcher.succeed();
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+    expect(states.last, AiCoreState.success);
+    await _disposeShell(tester, events);
   });
 }

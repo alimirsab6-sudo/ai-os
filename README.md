@@ -6,15 +6,43 @@ have not been decided.
 
 ## Current milestone and capability
 
-Milestone 3B.2 adds semantic text replacement for freshly inspected writable
-elements that support Microsoft UI Automation's Value pattern. Semantic
-Invoke, existing UI
-inspection, window control/discovery, and Chrome launch remain available. All
-capabilities use structured, permission-checked commands without an LLM or
-arbitrary shell input.
+Phase 1 connects the approved CronyX command bar and Quick Actions to the
+existing orchestrator, agents, permission boundary, tools, result types, and
+event bus. Controlled text such as `Open Chrome`, `Open Microsoft Edge`,
+`Open Notepad`, `Open Calculator`, `Open File Explorer`, `Open Windows
+Settings`, and `Open https://example.com` is interpreted deterministically and
+routed as a structured command. Text is never passed to a terminal or shell.
 
-The app currently uses a deterministic mock model provider and a temporary
-non-interactive Flutter shell.
+Existing Chrome-profile operations, semantic Invoke and SetValue, UI
+inspection, and window discovery/control remain available.
+
+## AI Core Visual Prototype
+
+The application now opens on the visual-only Living AI Core world foundation.
+A GPU fragment shader ray-marches a procedural 3D
+field of violet, magenta, blue, cyan, and lavender particles. Its sampling
+domain continuously deforms, so particles flow through asymmetric, compressed,
+elongated, and expanding forms instead of rotating as a fixed globe.
+Independent cell phases, depth travel, drift, density clouds, and
+particle-built energy streams create bright clusters, deep shadows, and an
+organic silhouette. There is no drawn sphere, outline, static texture,
+embedded reference image, GIF, or video.
+
+The reusable `AiCore` widget supports visual-only `idle`, `listening`,
+`thinking`, `speaking`, `executing`, `success`, and `error` states, low/medium/
+high shader quality, intensity control, simulated speech intensity, and
+smoothly damped, localized 3D mouse interaction. A visual-only controller
+smoothly blends state weights. Speaking uses a deterministic phrase, syllable,
+pause, and burst envelope to deform different regions rather than applying one
+scale animation. Quality levels vary ray-march sampling and procedural detail;
+medium is the default for the Intel UHD 620-class target machine.
+The full-screen demo includes a restrained development control strip for these
+options.
+
+The Core, HUD, Live Action panel, and Activity area now reflect the same real
+command lifecycle: thinking while the request is interpreted, executing after
+the selected tool starts, success or error from the structured result, and
+then idle. Microphone, speech, and voice remain visual-only and unconnected.
 
 ## Setup
 
@@ -140,6 +168,37 @@ It never accepts a window or element runtime ID, does not accept value text on
 the command line, and never prints the submitted value after entry. Add
 `--stale-test` to demonstrate safe stale-element refusal.
 
+## Manual Chrome profile discovery
+
+Chrome does not need to be running. The command reads only Chrome's standard
+per-user `Local State` configuration and known immediate profile directories:
+
+```powershell
+dart run tool/discover_chrome_profiles.dart
+```
+
+It prints profile display names and opaque runtime IDs only. It does not read
+or print cookies, tokens, passwords, or browsing history.
+
+## Manual profile-aware Chrome launch
+
+List freshly discovered profiles without launching:
+
+```powershell
+dart run tool/launch_chrome_profile.dart
+```
+
+Launch one displayed profile by numeric index and explicit confirmation:
+
+```powershell
+dart run tool/launch_chrome_profile.dart --profile-index=0 --confirm-launch
+```
+
+The utility accepts no executable path, profile directory, Chrome argument, or
+shell string. The selected opaque ID is resolved through the same in-memory
+discovery registry before the launcher internally creates the single
+`--profile-directory` argument.
+
 ## Validate
 
 ```powershell
@@ -150,15 +209,18 @@ flutter build windows
 
 ## Current limitations
 
-The implemented Windows capabilities are limited to launching Chrome,
+The implemented Windows capabilities are limited to allow-listed application
+launching, validated HTTP(S) URL opening, discovering and launching validated
+local Chrome profiles,
 top-level window discovery/control, bounded accessibility-tree inspection,
 semantic Invoke, and Value/SetValue. Selection, Toggle, ExpandCollapse, Scroll,
 RangeValue, and Text actions are not executable. There is no
-browser-specific automation, navigation, screenshot/OCR, keyboard/mouse
+tab management, in-page website interaction, screenshot/OCR, keyboard/mouse
 automation, terminal execution, process termination, real AI provider, local
 model, voice feature, external integration, persistent/vector memory, or MCP
 networking. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details.
 
-Chrome profile discovery, profile selection/launching, browser session state,
-and a Browser Agent are future capabilities and are not implemented.
+BrowserSession currently stores only the selected Chrome profile. Navigation,
+tabs, page interaction, browser verification beyond safe selected-profile
+metadata, and all later Browser Agent capabilities remain unimplemented.

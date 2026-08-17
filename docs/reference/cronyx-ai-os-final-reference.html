@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CRONYX AI OS</title>
+<style>
+  :root{
+    --bg: #030507;
+    --panel: rgba(10,16,24,0.55);
+    --panel-solid: #060a10;
+    --border: rgba(120,170,220,0.14);
+    --border-strong: rgba(110,190,255,0.4);
+    --text-hi: #eaf2fb;
+    --text-mid: #8fa4b8;
+    --text-dim: #52616f;
+    --cyan: #4fb8ff;
+    --cyan-soft: rgba(79,184,255,0.5);
+    --purple: #9b8cff;
+    --green: #37e29a;
+    --amber: #ffb454;
+  }
+  *{ box-sizing:border-box; }
+  html, body{ margin:0; height:100%; background:var(--bg); overflow:hidden;
+    font-family: 'Segoe UI', -apple-system, Arial, sans-serif; color:var(--text-hi); }
+
+  /* faint global vignette + grid so the black never feels flat */
+  #atmosphere{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(ellipse 900px 500px at 50% 38%, rgba(30,70,110,0.22), transparent 60%),
+      radial-gradient(ellipse 1400px 900px at 50% 100%, rgba(10,30,50,0.35), transparent 70%);
+  }
+  #grid{
+    position:fixed; inset:0; z-index:0; pointer-events:none; opacity:0.05;
+    background-image:
+      linear-gradient(rgba(120,170,220,1) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120,170,220,1) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black, transparent);
+  }
+
+  #app{ position:fixed; inset:0; z-index:1; display:grid;
+    grid-template-rows: 52px 1fr; }
+
+  /* ============ TOP BAR ============ */
+  #topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 18px; border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg, rgba(8,12,18,0.6), rgba(5,8,12,0.35));
+    -webkit-app-region: drag; animation: fadeIn .5s ease both;
+  }
+  .tb-left{ display:flex; align-items:baseline; gap:9px; }
+  .tb-brand{ font-size:13px; font-weight:700; letter-spacing:0.16em; color:var(--text-hi); }
+  .tb-ver{ font-size:10px; color:var(--text-dim); letter-spacing:0.06em; }
+  .tb-center{ display:flex; align-items:center; gap:10px; font-size:11.5px; color:var(--text-mid); }
+  .tb-time{ color:var(--text-hi); font-weight:600; letter-spacing:0.03em; font-variant-numeric:tabular-nums; }
+  .tb-sep{ color:var(--text-dim); opacity:0.6; }
+  .tb-right{ display:flex; align-items:center; gap:16px; }
+  .tb-status{ display:flex; align-items:center; gap:7px; font-size:10.5px; letter-spacing:0.1em; color:var(--green); }
+  .tb-status i{ width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 8px var(--green);
+    animation: pulse 1.8s ease-in-out infinite; }
+  .tb-winctl{ display:flex; align-items:center; gap:6px; -webkit-app-region: no-drag; }
+  .tb-winctl button{
+    width:13px; height:13px; border-radius:50%; border:1px solid var(--border); background:transparent;
+    cursor:pointer; padding:0; transition:.15s;
+  }
+  .tb-winctl button:hover{ filter:brightness(1.4); }
+  .tb-winctl .min{ border-color:rgba(255,180,84,0.4); }
+  .tb-winctl .min:hover{ background:rgba(255,180,84,0.5); }
+  .tb-winctl .max{ border-color:rgba(55,226,154,0.4); }
+  .tb-winctl .max:hover{ background:rgba(55,226,154,0.5); }
+  .tb-winctl .close{ border-color:rgba(255,110,110,0.4); }
+  .tb-winctl .close:hover{ background:rgba(255,110,110,0.5); }
+
+  /* ============ MAIN GRID ============ */
+  #main{ display:grid; grid-template-columns: 236px 1fr 300px; overflow:hidden; }
+
+  /* ============ SIDEBAR ============ */
+  #sidebar{
+    border-right:1px solid var(--border); padding:18px 14px;
+    display:flex; flex-direction:column;
+    background:linear-gradient(180deg, rgba(8,12,18,0.5), rgba(5,8,12,0.3));
+    animation: slideIn .5s ease both;
+  }
+  .nav{ display:flex; flex-direction:column; gap:4px; flex:1; }
+  .nav-item{
+    display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:9px;
+    border:1px solid transparent; cursor:pointer; transition:.15s;
+  }
+  .nav-item:hover{ background:rgba(255,255,255,0.03); }
+  .nav-item.active{
+    background:rgba(60,140,220,0.1); border-color:rgba(90,170,255,0.35);
+    box-shadow: inset 0 0 22px rgba(70,150,255,0.08), 0 0 14px rgba(60,140,220,0.12);
+  }
+  .nav-icon{
+    width:32px; height:32px; border-radius:8px; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--border); color:var(--text-mid);
+  }
+  .nav-item.active .nav-icon{ color:var(--cyan); border-color:rgba(90,170,255,0.4);
+    box-shadow:0 0 10px rgba(79,184,255,0.35); }
+  .nav-item:hover .nav-icon{ color:var(--text-hi); }
+  .nav-labels .l1{ font-size:12.5px; font-weight:600; letter-spacing:0.04em; }
+  .nav-item.active .l1{ color:var(--text-hi); }
+  .nav-labels .l2{ font-size:10.5px; color:var(--text-dim); margin-top:1px; }
+
+  .sb-status{
+    border:1px solid var(--border); border-radius:10px; padding:12px 13px;
+    background:rgba(255,255,255,0.02); margin-top:10px;
+  }
+  .sb-status .row{ display:flex; justify-content:space-between; align-items:baseline; font-size:11px; margin-bottom:6px; }
+  .sb-status .row .lab{ color:var(--text-mid); letter-spacing:0.03em; }
+  .sb-status .row .val{ color:var(--text-hi); font-weight:600; }
+  .meter{ height:4px; border-radius:3px; background:rgba(255,255,255,0.06); overflow:hidden; margin-bottom:10px; }
+  .meter > i{ display:block; height:100%; background:var(--cyan); border-radius:3px; box-shadow:0 0 8px rgba(79,184,255,0.55); }
+  .sparkline{ display:block; margin:2px 0 10px; opacity:0.85; }
+
+  .sb-profile{
+    display:flex; align-items:center; gap:10px; padding:11px 12px; margin-top:10px;
+    border:1px solid var(--border); border-radius:10px; cursor:pointer; transition:.15s;
+  }
+  .sb-profile:hover{ border-color:var(--border-strong); background:rgba(255,255,255,0.02); }
+  .avatar{
+    width:30px; height:30px; border-radius:50%; flex:none;
+    background:radial-gradient(circle at 35% 30%, #6fd0ff, #2d6fb0 70%);
+    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#04121c;
+  }
+  .sb-profile .n1{ font-size:12px; font-weight:600; }
+  .sb-profile .n2{ font-size:10px; color:var(--text-dim); }
+  .chev{ margin-left:auto; color:var(--text-dim); }
+
+  /* ============ CORE (CENTER) ============ */
+  #core-col{
+    position:relative; display:grid;
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    justify-items:center; overflow:hidden; min-height:0;
+  }
+
+  #core-stage{ position:relative; width:100%; min-height:0; overflow:visible; }
+  #core-embed{ position:absolute; inset:0; overflow:visible; }
+  #core-embed canvas{ display:block; width:100%; height:100%; cursor:grab; }
+  #core-embed canvas:active{ cursor:grabbing; }
+
+  /* HUD markers either side of the core */
+  .hud-col{ position:absolute; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:64px;
+    z-index:2; pointer-events:none; }
+  .hud-col.left{ left:6%; align-items:flex-start; }
+  .hud-col.right{ right:6%; align-items:flex-end; }
+  .hud-item{ display:flex; flex-direction:column; align-items:center; gap:9px; font-size:10.5px; letter-spacing:0.14em;
+    color:var(--text-dim); transition:.3s; }
+  .hud-icon{ height:18px; display:flex; align-items:center; justify-content:center; color:var(--text-dim); transition:.3s; }
+  .hud-label{ display:flex; align-items:center; gap:8px; }
+  .hud-col.right .hud-label{ flex-direction:row-reverse; }
+  .hud-dot{ width:7px; height:7px; border-radius:50%; border:1.5px solid var(--text-dim); flex:none; }
+  .hud-item.active{ color:var(--cyan); text-shadow:0 0 10px rgba(79,184,255,0.5); }
+  .hud-item.active .hud-icon{ color:var(--cyan); filter:drop-shadow(0 0 6px rgba(79,184,255,0.6)); }
+  .hud-item.active .hud-dot{ background:var(--cyan); border-color:var(--cyan); box-shadow:0 0 8px var(--cyan);
+    animation: pulse 1.8s ease-in-out infinite; }
+
+  .core-status{ margin-bottom:16px; text-align:center; z-index:2; animation: fadeIn .8s ease both .2s; }
+  .core-status .wave{ display:flex; gap:3px; align-items:flex-end; justify-content:center; height:14px; margin-bottom:8px; }
+  .core-status .wave i{ width:2.5px; background:var(--cyan); opacity:0.75; border-radius:2px;
+    animation: wave 1.3s ease-in-out infinite; }
+  .core-status .state{ font-size:13px; letter-spacing:0.28em; font-weight:700; color:var(--cyan);
+    text-shadow:0 0 14px rgba(79,184,255,0.4); transition:color .3s, text-shadow .3s; }
+  .core-status .sublabel{ font-size:13px; color:var(--text-mid); margin-top:5px; }
+  .core-status .prompt{ font-size:22px; font-weight:500; color:var(--text-hi); margin-top:22px; }
+
+  /* ============ COMMAND BAR ============ */
+  #cmdbar-wrap{ display:flex; flex-direction:column; align-items:center; padding-bottom:22px; z-index:3; }
+  #cmdbar{
+    width:min(680px, 86%); display:flex; align-items:center; gap:14px;
+    border:1px solid var(--border-strong); border-radius:20px; padding:11px 14px 11px 11px;
+    background:rgba(9,15,22,0.75); backdrop-filter: blur(14px);
+    box-shadow:0 0 0 1px rgba(79,184,255,0.05) inset, 0 10px 40px rgba(0,0,0,0.5), 0 0 26px rgba(60,140,220,0.08);
+    transition:.2s;
+  }
+  #cmdbar:focus-within{ border-color:var(--cyan); box-shadow:0 0 0 1px rgba(79,184,255,0.15) inset, 0 0 34px rgba(79,184,255,0.22); }
+  .mic-btn, .send-btn{
+    width:50px; height:50px; border-radius:50%; flex:none; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; transition:.15s;
+  }
+  .mic-btn{
+    border:1.5px solid var(--border-strong); background:rgba(79,184,255,0.06); color:var(--cyan);
+    box-shadow:0 0 18px rgba(79,184,255,0.22), inset 0 0 12px rgba(79,184,255,0.08);
+  }
+  .send-btn{
+    border:none; color:#04121c;
+    background:radial-gradient(circle at 35% 30%, #7fd6ff, #1f7bc4 75%);
+    box-shadow:0 0 16px rgba(79,184,255,0.45);
+  }
+  .mic-btn:hover, .send-btn:hover{ filter:brightness(1.12); transform:translateY(-1px); }
+  .cmd-input{ flex:1; display:flex; flex-direction:column; min-width:0; }
+  .cmd-input input{
+    background:none; border:none; outline:none; color:var(--text-hi); font-size:14.5px;
+    font-family:inherit; padding:2px 0;
+  }
+  .cmd-input input::placeholder{ color:var(--text-mid); }
+  .cmd-input .examples{ font-size:10.5px; color:var(--text-dim); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cmd-input .examples b{ color:#6c8091; font-weight:500; }
+  .cmd-tip{ font-size:10px; color:var(--text-dim); letter-spacing:0.1em; margin-top:10px; display:flex; align-items:center; gap:6px; }
+
+  /* ============ RIGHT PANEL ============ */
+  #rightpanel{ border-left:1px solid var(--border); padding:18px 16px; display:flex; flex-direction:column; gap:16px;
+    overflow-y:auto; background:linear-gradient(180deg, rgba(8,12,18,0.5), rgba(5,8,12,0.3));
+    animation: slideInR .5s ease both; }
+  #rightpanel::-webkit-scrollbar{ width:5px; }
+  #rightpanel::-webkit-scrollbar-thumb{ background:rgba(120,170,220,0.15); border-radius:4px; }
+
+  .panel-head{ display:flex; align-items:center; justify-content:space-between; }
+  .panel-head .t{ font-size:11px; letter-spacing:0.22em; color:var(--text-mid); font-weight:700; }
+  .panel-head .link{ font-size:10.5px; color:var(--cyan); cursor:pointer; opacity:0.85; }
+  .panel-head .link:hover{ opacity:1; }
+
+  .activity{ border:1px solid var(--border); border-radius:12px; overflow:hidden; background:rgba(255,255,255,0.015); }
+  .act-item{ display:flex; gap:10px; padding:11px 13px; border-bottom:1px solid var(--border); align-items:flex-start; }
+  .act-item:last-child{ border-bottom:none; }
+  .act-icon{ width:26px; height:26px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; }
+  .act-body{ flex:1; min-width:0; }
+  .act-top{ display:flex; justify-content:space-between; gap:8px; }
+  .act-title{ font-size:12px; font-weight:600; color:var(--text-hi); }
+  .act-time{ font-size:9.5px; color:var(--text-dim); white-space:nowrap; }
+  .act-sub{ font-size:10.5px; color:var(--text-mid); margin-top:2px; }
+
+  /* ---- LIVE ACTION ---- */
+  .live-action{ border:1px solid var(--border-strong); border-radius:12px; padding:13px 14px;
+    background:linear-gradient(180deg, rgba(79,184,255,0.07), rgba(79,184,255,0.02));
+    box-shadow:0 0 24px rgba(79,184,255,0.06) inset; }
+  .la-status{ display:flex; align-items:center; gap:7px; font-size:10.5px; font-weight:700;
+    letter-spacing:0.16em; color:var(--cyan); text-shadow:0 0 10px rgba(79,184,255,0.4); }
+  .la-dot{ width:6px; height:6px; border-radius:50%; background:var(--cyan); box-shadow:0 0 8px var(--cyan);
+    animation: pulse 1.8s ease-in-out infinite; }
+  .la-title{ font-size:13px; font-weight:600; color:var(--text-hi); margin-top:9px; }
+  .la-agent{ font-size:10.5px; color:var(--text-dim); margin-top:2px; }
+  .la-steps{ margin-top:13px; display:flex; flex-direction:column; gap:10px; }
+  .la-step{ display:flex; align-items:center; gap:9px; font-size:11.5px; color:var(--text-mid); }
+  .la-check{ width:16px; height:16px; flex:none; display:flex; align-items:center; justify-content:center; }
+  .la-check svg{ display:block; }
+  .la-step.done .la-check{ color:var(--green); }
+  .la-step.active{ color:var(--text-hi); }
+  .la-step.active .la-check{ color:var(--cyan); }
+  .la-step.pending .la-check{ color:var(--text-dim); }
+  .la-step .la-name{ flex:1; }
+  .la-state{ font-size:10px; color:var(--text-dim); }
+  .la-step.done .la-state{ color:var(--green); }
+  .la-step.active .la-state{ color:var(--cyan); font-weight:600; }
+  .la-progress-row{ display:flex; align-items:baseline; justify-content:space-between; margin-top:14px; }
+  .la-progress-label{ font-size:11px; color:var(--text-mid); }
+  .la-progress-pct{ font-size:13px; font-weight:700; color:var(--text-hi); }
+  .la-progress-bar{ height:5px; border-radius:3px; background:rgba(255,255,255,0.06); overflow:hidden; margin-top:7px; }
+  .la-progress-bar i{ display:block; height:100%; border-radius:3px;
+    background:linear-gradient(90deg, var(--cyan-soft), var(--cyan)); box-shadow:0 0 8px rgba(79,184,255,0.5); }
+
+  .qa-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .qa-card{
+    display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:10px;
+    border:1px solid var(--border); background:rgba(255,255,255,0.015); cursor:pointer; transition:.15s;
+  }
+  .qa-card:hover{ border-color:var(--border-strong); background:rgba(79,184,255,0.06); transform:translateY(-1px); }
+  .qa-icon{ width:26px; height:26px; border-radius:8px; border:1px solid var(--border); flex:none;
+    display:flex; align-items:center; justify-content:center; color:var(--text-mid); }
+  .qa-card:hover .qa-icon{ color:var(--cyan); border-color:rgba(90,170,255,0.4); }
+  .qa-t1{ font-size:11px; font-weight:600; }
+  .qa-t2{ font-size:9px; color:var(--text-dim); margin-top:1px; }
+
+  .sys-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .sys-card{ border:1px solid var(--border); border-radius:10px; padding:10px 11px; background:rgba(255,255,255,0.015); }
+  .sys-card .lab{ font-size:9.5px; letter-spacing:0.14em; color:var(--text-dim); margin-bottom:5px; }
+  .sys-card .val{ font-size:13px; font-weight:700; }
+  .sys-card .sub{ font-size:9.5px; color:var(--text-mid); margin-top:1px; }
+  .sys-card.security .val{ color:var(--green); }
+
+  /* ============ ANIMATIONS ============ */
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+  @keyframes slideIn{ from{opacity:0; transform:translateX(-10px);} to{opacity:1; transform:translateX(0);} }
+  @keyframes slideInR{ from{opacity:0; transform:translateX(10px);} to{opacity:1; transform:translateX(0);} }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:0.35; } }
+  @keyframes wave{ 0%,100%{ height:4px; } 50%{ height:14px; } }
+
+  @media (max-width: 1500px){
+    #main{ grid-template-columns: 210px 1fr 270px; }
+    .hud-col.left{ left:2%; } .hud-col.right{ right:2%; }
+  }
+  @media (max-width: 1300px){
+    #rightpanel{ display:none; }
+    #main{ grid-template-columns: 210px 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div id="atmosphere"></div>
+<div id="grid"></div>
+
+<div id="app">
+
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div class="tb-left">
+      <span class="tb-brand">CRONYX AI OS</span>
+      <span class="tb-ver">v1.0.0</span>
+    </div>
+    <div class="tb-center">
+      <span class="tb-time" id="tbTime">--:-- --</span>
+      <span class="tb-sep">&middot;</span>
+      <span class="tb-date" id="tbDate">--</span>
+    </div>
+    <div class="tb-right">
+      <div class="tb-status"><i></i>System Ready</div>
+      <div class="tb-winctl">
+        <button class="min" title="Minimize"></button>
+        <button class="max" title="Maximize"></button>
+        <button class="close" title="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="main">
+
+    <!-- SIDEBAR -->
+    <div id="sidebar">
+      <div class="nav">
+        <div class="nav-item active">
+          <div class="nav-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" opacity="0.5"/></svg>
+          </div>
+          <div class="nav-labels"><div class="l1">Core</div><div class="l2">AI Brain</div></div>
+        </div>
+        <div class="nav-item">
+          <div class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg></div>
+          <div class="nav-labels"><div class="l1">Browser</div><div class="l2">Web Agent</div></div>
+        </div>
+        <div class="nav-item">
+          <div class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></div>
+          <div class="nav-labels"><div class="l1">PC</div><div class="l2">System Agent</div></div>
+        </div>
+        <div class="nav-item">
+          <div class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a1 1 0 011-1h5l2 2h9a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V7z"/></svg></div>
+          <div class="nav-labels"><div class="l1">Files</div><div class="l2">File Manager</div></div>
+        </div>
+        <div class="nav-item">
+          <div class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 12l2.5 2.5L16 9"/></svg></div>
+          <div class="nav-labels"><div class="l1">Tasks</div><div class="l2">Task Manager</div></div>
+        </div>
+        <div class="nav-item">
+          <div class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 4a4 4 0 00-4 4v1a3 3 0 00-1 5.6V16a4 4 0 004 4h1M15 4a4 4 0 014 4v1a3 3 0 011 5.6V16a4 4 0 01-4 4h-1M9 4a3 3 0 016 0M9 20a3 3 0 006 0"/></svg></div>
+          <div class="nav-labels"><div class="l1">Memory</div><div class="l2">Knowledge Base</div></div>
+        </div>
+        <div class="nav-item">
+          <div class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="12" cy="17" r="3"/><path d="M9 8.5L11 15M15 8.5L13 15" opacity="0.5"/></svg></div>
+          <div class="nav-labels"><div class="l1">Agents</div><div class="l2">All Agents</div></div>
+        </div>
+        <div class="nav-item">
+          <div class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" opacity="0.55"/></svg></div>
+          <div class="nav-labels"><div class="l1">Settings</div><div class="l2">Preferences</div></div>
+        </div>
+      </div>
+
+      <div class="sb-status">
+        <div class="row"><span class="lab">System Load</span><span class="val" id="sysLoadVal">18%</span></div>
+        <svg class="sparkline" width="100%" height="22" viewBox="0 0 200 22" preserveAspectRatio="none">
+          <polyline points="0,16 15,12 30,15 45,8 60,13 75,6 90,11 105,9 120,14 135,7 150,12 165,9 180,13 200,8"
+            fill="none" stroke="#4fb8ff" stroke-width="1.6" opacity="0.85"/>
+        </svg>
+        <div class="row"><span class="lab">Memory</span><span class="val">5.2 GB / 16 GB</span></div>
+        <div class="meter"><i style="width:32%"></i></div>
+      </div>
+
+      <div class="sb-profile">
+        <div class="avatar">C</div>
+        <div><div class="n1">CronyX User</div><div class="n2">Local Profile</div></div>
+        <span class="chev">&#8250;</span>
+      </div>
+    </div>
+
+    <!-- CORE COLUMN -->
+    <div id="core-col">
+      <div id="core-stage">
+        <div class="hud-col left">
+          <div class="hud-item">
+            <div class="hud-icon"><svg width="18" height="16" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 10v0M6 6v8M10 3v14M14 6v8M18 10v0"/></svg></div>
+            <div class="hud-label">LISTENING<span class="hud-dot"></span></div>
+          </div>
+          <div class="hud-item">
+            <div class="hud-icon"><svg width="18" height="16" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4a5 5 0 015 5v7M17 4a5 5 0 00-5 5"/><circle cx="7" cy="4" r="1.4" fill="currentColor" stroke="none"/><circle cx="17" cy="4" r="1.4" fill="currentColor" stroke="none"/></svg></div>
+            <div class="hud-label">THINKING<span class="hud-dot"></span></div>
+          </div>
+        </div>
+        <div class="hud-col right">
+          <div class="hud-item">
+            <div class="hud-icon"><svg width="18" height="16" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 10v0M6 6v8M10 3v14M14 6v8M18 10v0"/></svg></div>
+            <div class="hud-label">SPEAKING<span class="hud-dot"></span></div>
+          </div>
+          <div class="hud-item">
+            <div class="hud-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5z" fill="currentColor" stroke="none"/></svg></div>
+            <div class="hud-label">EXECUTING<span class="hud-dot"></span></div>
+          </div>
+        </div>
+
+        <!-- APPROVED CORE, integrated directly — same particle engine, canvas rendering,
+             morph system, and interaction from core.html, adapted to size to this container. -->
+        <div id="core-embed"><canvas id="coreCanvas"></canvas></div>
+      </div>
+
+      <div class="core-status">
+        <div class="wave"><i style="animation-delay:0s"></i><i style="animation-delay:.1s"></i><i style="animation-delay:.2s"></i><i style="animation-delay:.3s"></i><i style="animation-delay:.4s"></i></div>
+        <div class="state">IDLE</div>
+        <div class="sublabel">Ready</div>
+        <div class="prompt">How can I assist you today?</div>
+      </div>
+
+      <div id="cmdbar-wrap">
+        <div id="cmdbar">
+          <button class="mic-btn" title="Speak">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>
+          </button>
+          <div class="cmd-input">
+            <input type="text" placeholder="Type a command or ask anything..." />
+            <div class="examples">Examples: <b>"Open Chrome"</b> &nbsp;&middot;&nbsp; <b>"Show my files"</b> &nbsp;&middot;&nbsp; <b>"System status"</b> &nbsp;&middot;&nbsp; <b>"What can you do?"</b></div>
+          </div>
+          <button class="send-btn" title="Send">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+        <div class="cmd-tip">&#128161; TIP: You can also speak to CronyX</div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div id="rightpanel">
+      <div>
+        <div class="panel-head"><span class="t">LIVE ACTION</span><span class="link">Clear</span></div>
+        <div class="live-action" style="margin-top:10px;">
+          <div class="la-status"><span class="la-dot"></span>IDLE</div>
+          <div class="la-title">Waiting for your request</div>
+          <div class="la-agent">Assistant Core</div>
+          <div class="la-steps">
+            <div class="la-step pending">
+              <span class="la-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg></span>
+              <span class="la-name">Waiting for input</span><span class="la-state">Pending</span>
+            </div>
+          </div>
+          <div class="la-progress-row"><span class="la-progress-label">Progress</span><span class="la-progress-pct">0%</span></div>
+          <div class="la-progress-bar"><i style="width:0%"></i></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel-head"><span class="t">ACTIVITY</span><span class="link">View All</span></div>
+        <div class="activity" style="margin-top:10px;">
+          <div class="act-item">
+            <span class="act-icon" style="background:rgba(79,184,255,0.14); color:var(--cyan);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg></span>
+            <div class="act-body"><div class="act-top"><span class="act-title">Chrome opened</span><span class="act-time">10:42 PM</span></div><div class="act-sub">Browser Agent</div></div>
+          </div>
+          <div class="act-item">
+            <span class="act-icon" style="background:rgba(55,226,154,0.14); color:var(--green);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6M5 12v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6"/></svg></span>
+            <div class="act-body"><div class="act-top"><span class="act-title">Memory synchronized</span><span class="act-time">10:41 PM</span></div><div class="act-sub">Knowledge Base</div></div>
+          </div>
+          <div class="act-item">
+            <span class="act-icon" style="background:rgba(155,140,255,0.14); color:var(--purple);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/></svg></span>
+            <div class="act-body"><div class="act-top"><span class="act-title">Core initialized</span><span class="act-time">10:40 PM</span></div><div class="act-sub">System</div></div>
+          </div>
+          <div class="act-item">
+            <span class="act-icon" style="background:rgba(79,184,255,0.14); color:var(--cyan);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></span>
+            <div class="act-body"><div class="act-top"><span class="act-title">PC Agent online</span><span class="act-time">10:39 PM</span></div><div class="act-sub">All systems operational</div></div>
+          </div>
+          <div class="act-item">
+            <span class="act-icon" style="background:rgba(79,184,255,0.14); color:var(--cyan);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8.5 14c1 1 2.2 1.5 3.5 1.5s2.5-.5 3.5-1.5" stroke-linecap="round"/><circle cx="9" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1" fill="currentColor" stroke="none"/></svg></span>
+            <div class="act-body"><div class="act-top"><span class="act-title">Welcome back</span><span class="act-time">10:38 PM</span></div><div class="act-sub">How can I help you?</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel-head"><span class="t">QUICK ACTIONS</span></div>
+        <div class="qa-grid" style="margin-top:10px;">
+          <div class="qa-card">
+            <div class="qa-icon" style="background:rgba(79,184,255,0.14); border-color:rgba(79,184,255,0.25); color:var(--cyan);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg></div>
+            <div><div class="qa-t1">Open Browser</div><div class="qa-t2">Web Agent</div></div>
+          </div>
+          <div class="qa-card">
+            <div class="qa-icon" style="background:rgba(79,184,255,0.14); border-color:rgba(79,184,255,0.25); color:var(--cyan);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></div>
+            <div><div class="qa-t1">Open My PC</div><div class="qa-t2">System Access</div></div>
+          </div>
+          <div class="qa-card">
+            <div class="qa-icon" style="background:rgba(255,180,84,0.14); border-color:rgba(255,180,84,0.25); color:var(--amber);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a1 1 0 011-1h5l2 2h9a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V7z"/></svg></div>
+            <div><div class="qa-t1">Browse Files</div><div class="qa-t2">File Manager</div></div>
+          </div>
+          <div class="qa-card">
+            <div class="qa-icon" style="background:rgba(55,226,154,0.14); border-color:rgba(55,226,154,0.25); color:var(--green);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 12l2.5 2.5L16 9"/></svg></div>
+            <div><div class="qa-t1">View Tasks</div><div class="qa-t2">Task Manager</div></div>
+          </div>
+          <div class="qa-card">
+            <div class="qa-icon" style="background:rgba(255,120,90,0.14); border-color:rgba(255,120,90,0.25); color:#ff8a65;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
+            <div><div class="qa-t1">Run Command</div><div class="qa-t2">Terminal</div></div>
+          </div>
+          <div class="qa-card">
+            <div class="qa-icon" style="background:rgba(155,140,255,0.14); border-color:rgba(155,140,255,0.25); color:var(--purple);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0114 0"/><path d="M19 8h-3M17.5 6.5v3" stroke-width="1.7"/></svg></div>
+            <div><div class="qa-t1">Add Agent</div><div class="qa-t2">New Agent</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="sys-grid">
+          <div class="sys-card"><div class="lab">NETWORK</div><div class="val" style="font-size:11px; color:var(--green);">&uarr; 12.4 KB/s</div><div class="sub">&darr; 8.7 KB/s</div></div>
+          <div class="sys-card"><div class="lab">CPU</div><div class="val">14%</div>
+            <svg width="100%" height="14" viewBox="0 0 80 14" preserveAspectRatio="none" style="margin-top:3px;"><polyline points="0,10 10,7 20,11 30,5 40,9 50,4 60,8 70,6 80,9" fill="none" stroke="#4fb8ff" stroke-width="1.3" opacity="0.8"/></svg>
+          </div>
+          <div class="sys-card"><div class="lab">TEMP</div><div class="val">41&deg;C</div>
+            <svg width="100%" height="14" viewBox="0 0 80 14" preserveAspectRatio="none" style="margin-top:3px;"><polyline points="0,9 10,8 20,10 30,7 40,8 50,6 60,7 70,5 80,6" fill="none" stroke="#ffb454" stroke-width="1.3" opacity="0.8"/></svg>
+          </div>
+          <div class="sys-card security"><div class="lab">SECURITY</div><div class="val" style="display:flex; align-items:center; gap:5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>Protected</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ================================================================
+  // TOP BAR CLOCK
+  // ================================================================
+  (function clock(){
+    const timeEl = document.getElementById('tbTime');
+    const dateEl = document.getElementById('tbDate');
+    function tick(){
+      const now = new Date();
+      timeEl.textContent = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+      dateEl.textContent = now.toLocaleDateString([], { weekday:'short', month:'short', day:'numeric' });
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
+
+  // ================================================================
+  // CORE STATE CONTROLLER — drives the mock UI labels/HUD today; the
+  // real CronyX/Flutter backend can later call window.CronyxCore.setState(name)
+  // to drive the same UI without touching the Core's rendering.
+  // ================================================================
+  const hudItems = document.querySelectorAll('.hud-item');
+  const stateLabelEl = document.querySelector('.core-status .state');
+  const sublabelEl = document.querySelector('.core-status .sublabel');
+
+  const STATE_META = {
+    idle:      { label:'IDLE',      sub:'Ready',               hud:null,        color:null },
+    listening: { label:'LISTENING', sub:'Listening',           hud:'LISTENING', color:null },
+    thinking:  { label:'THINKING',  sub:'Thinking',            hud:'THINKING',  color:null },
+    speaking:  { label:'SPEAKING',  sub:'Responding',          hud:'SPEAKING',  color:null },
+    executing: { label:'EXECUTING', sub:'Running command',     hud:'EXECUTING', color:null },
+    success:   { label:'SUCCESS',   sub:'Done',                hud:null,        color:'#37e29a' },
+    error:     { label:'ERROR',     sub:'Something went wrong',hud:null,        color:'#ff6a6a' },
+  };
+
+  // ----------------------------------------------------------------
+  // LIVE ACTION panel — same markup/styling as before, just re-rendered
+  // from the same state that drives the HUD and the Core, so the three
+  // never disagree with each other.
+  // ----------------------------------------------------------------
+  const laStatusEl = document.querySelector('.la-status');
+  const laTitleEl  = document.querySelector('.la-title');
+  const laAgentEl  = document.querySelector('.la-agent');
+  const laStepsEl  = document.querySelector('.la-steps');
+  const laPctEl    = document.querySelector('.la-progress-pct');
+  const laBarEl    = document.querySelector('.la-progress-bar i');
+
+  const CHECK_SVG  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>';
+  const ACTIVE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor"/></svg>';
+  const PEND_SVG   = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>';
+  const STEP_LABEL = { done:'Completed', active:'In Progress', pending:'Pending' };
+  const STEP_ICON  = { done:CHECK_SVG, active:ACTIVE_SVG, pending:PEND_SVG };
+
+  const LIVE_ACTION_META = {
+    idle:      { status:'IDLE', title:'Waiting for your request', agent:'Assistant Core', progress:0,
+      steps:[ {n:'Waiting for input', s:'pending'} ] },
+    listening: { status:'LISTENING', title:'Waiting for your request', agent:'Assistant Core', progress:8,
+      steps:[ {n:'Listen for input', s:'active'}, {n:'Understand request', s:'pending'} ] },
+    thinking:  { status:'THINKING', title:'Planning your request', agent:'Assistant Core', progress:45,
+      steps:[ {n:'Understand request', s:'done'}, {n:'Plan response', s:'active'}, {n:'Execute', s:'pending'} ] },
+    speaking:  { status:'SPEAKING', title:'Responding to your request', agent:'Assistant Core', progress:68,
+      steps:[ {n:'Understand request', s:'done'}, {n:'Process information', s:'done'}, {n:'Generate response', s:'active'}, {n:'Deliver output', s:'pending'} ] },
+    executing: { status:'EXECUTING', title:'Running requested action', agent:'Browser Agent', progress:82,
+      steps:[ {n:'Understand request', s:'done'}, {n:'Select agent', s:'done'}, {n:'Execute action', s:'active'}, {n:'Verify result', s:'pending'} ] },
+    success:   { status:'SUCCESS', title:'Completed successfully', agent:'Assistant Core', progress:100,
+      steps:[ {n:'Understand request', s:'done'}, {n:'Select agent', s:'done'}, {n:'Execute action', s:'done'}, {n:'Verify result', s:'done'} ] },
+  };
+
+  function renderLiveAction(name){
+    const meta = LIVE_ACTION_META[name];
+    if (!meta) return; // ERROR has no dedicated template — the panel keeps showing the last relevant action, per spec
+    laStatusEl.textContent = meta.status;
+    laTitleEl.textContent = meta.title;
+    laAgentEl.textContent = meta.agent;
+    laStepsEl.innerHTML = meta.steps.map(st => (
+      `<div class="la-step ${st.s}">` +
+        `<span class="la-check">${STEP_ICON[st.s]}</span>` +
+        `<span class="la-name">${st.n}</span>` +
+        `<span class="la-state">${STEP_LABEL[st.s]}</span>` +
+      `</div>`
+    )).join('');
+    laPctEl.textContent = meta.progress + '%';
+    laBarEl.style.width = meta.progress + '%';
+  }
+
+  let currentState = 'idle';
+  let autoRevertTimer = null;
+  const AUTO_REVERT_MS = 1400; // how long SUCCESS/ERROR hold before easing back to IDLE
+
+  function applyState(name){
+    // any pending SUCCESS/ERROR auto-revert is superseded the moment
+    // ANY new state is applied — manual or automatic — so there is
+    // never more than one timer trying to move the state.
+    if (autoRevertTimer){ clearTimeout(autoRevertTimer); autoRevertTimer = null; }
+
+    const meta = STATE_META[name] || STATE_META.idle;
+    currentState = STATE_META[name] ? name : 'idle';
+    stateLabelEl.textContent = meta.label;
+    stateLabelEl.style.color = meta.color || '';
+    stateLabelEl.style.textShadow = meta.color ? `0 0 14px ${meta.color}66` : '';
+    sublabelEl.textContent = meta.sub;
+    hudItems.forEach(el => el.classList.toggle('active', el.textContent.trim() === meta.hud));
+    renderLiveAction(currentState);
+    // drive the actual Core animation through the SAME state — the Core
+    // engine (defined further below) registers this hook once it loads;
+    // idle on first paint is a no-op since the Core already starts idle.
+    if (window.__coreSetState) window.__coreSetState(currentState);
+
+    // SUCCESS / ERROR are brief punctuation, not resting states. The
+    // OUTER controller — not the Core engine — owns the timer that
+    // returns everything to IDLE, and it does so through the SAME
+    // setState entry point used everywhere else, so the Core, the HUD,
+    // the state label, and Live Action revert to IDLE together instead
+    // of the Core silently going idle while the UI still reads SUCCESS.
+    if (currentState === 'success' || currentState === 'error'){
+      autoRevertTimer = setTimeout(() => {
+        autoRevertTimer = null;
+        window.CronyxCore.setState('idle');
+      }, AUTO_REVERT_MS);
+    }
+  }
+
+  // Public hook for the future backend: window.CronyxCore.setState('thinking')
+  window.CronyxCore = {
+    states: Object.keys(STATE_META),
+    getState: () => currentState,
+    setState: applyState
+  };
+  applyState('idle');
+
+  // random auto-cycling removed — state now only changes via explicit
+  // calls to window.CronyxCore.setState(...) (HUD clicks, the command
+  // bar demo, or Quick Action cards below). The Core holds whatever
+  // state it was last told to hold.
+  let lastManualAt = 0;
+
+  // Click a HUD indicator to jump straight to that state (demo only —
+  // the real backend will drive this via window.CronyxCore.setState).
+  hudItems.forEach(el => {
+    el.style.pointerEvents = 'auto';
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => {
+      const name = el.textContent.trim().toLowerCase();
+      if (STATE_META[name]){
+        lastManualAt = performance.now();
+        window.CronyxCore.setState(name);
+      }
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // COMMAND BAR + QUICK ACTIONS — UI-only demo flow. No real AI, no
+  // API, no backend. Just walks the state machine so the interaction
+  // model can be reviewed before the Flutter implementation.
+  // ----------------------------------------------------------------
+  let demoRunning = false;
+  function runDemoSequence(steps){
+    if (demoRunning) return;
+    demoRunning = true;
+    let delay = 0;
+    steps.forEach(([state, wait], idx) => {
+      delay += idx === 0 ? 0 : steps[idx-1][1];
+      setTimeout(() => {
+        lastManualAt = performance.now();
+        window.CronyxCore.setState(state);
+        if (idx === steps.length - 1) {
+          setTimeout(() => { demoRunning = false; }, wait);
+        }
+      }, delay);
+    });
+  }
+
+  // Typed command: THINKING → SPEAKING → EXECUTING → SUCCESS → IDLE
+  function runCommandDemo(){
+    runDemoSequence([
+      ['thinking', 1100],
+      ['speaking', 1500],
+      ['executing', 1500],
+      ['success', 1400],
+      ['idle', 0],
+    ]);
+  }
+
+  // Quick Action card: THINKING → EXECUTING → SUCCESS → IDLE
+  function runQuickActionDemo(){
+    runDemoSequence([
+      ['thinking', 900],
+      ['executing', 1500],
+      ['success', 1400],
+      ['idle', 0],
+    ]);
+  }
+
+  const cmdInputEl = document.querySelector('.cmd-input input');
+  const sendBtnEl  = document.querySelector('.send-btn');
+
+  function submitCommand(){
+    if (!cmdInputEl.value.trim() || demoRunning) return;
+    runCommandDemo();
+    cmdInputEl.value = '';
+  }
+  sendBtnEl.addEventListener('click', submitCommand);
+  cmdInputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitCommand();
+  });
+
+  document.querySelectorAll('.qa-card').forEach(card => {
+    card.addEventListener('click', () => {
+      if (demoRunning) return;
+      runQuickActionDemo();
+    });
+  });
+
+  // ================================================================
+  // APPROVED AI CORE — integrated directly from core.html. Rendering,
+  // particle field, drag/zoom/hover interaction, depth projection and
+  // color are unchanged. The only thing that changed is HOW the shape
+  // is generated each frame: instead of baking 9 discrete geometric
+  // shapes and morphing between them, the globe is now ONE continuous
+  // procedural volume, driven every frame by a small set of smoothly
+  // interpolated state parameters (see STATE_PARAMS below). There is
+  // no shape array, no shape index, and no hard transition boundary —
+  // the identity of the Core never changes, only its energy.
+  // ================================================================
+  (function CoreEngine(){
+  const stage = document.getElementById("core-stage");
+  const canvas = document.getElementById("coreCanvas");
+  const ctx = canvas.getContext("2d");
+  let W, H, DPR;
+
+  function resize() {
+    DPR = Math.min(devicePixelRatio || 1, 2);
+    W = canvas.clientWidth;
+    H = canvas.clientHeight;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  addEventListener("resize", resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(stage);
+  resize();
+
+  // ================================================================
+  // PARTICLE FIELD — fibonacci-scatter direction basis. Every particle
+  // keeps this same direction for the entire lifetime of the page; only
+  // its radius along that direction is deformed procedurally per frame.
+  // That's what keeps the Core recognizable as ONE living volume instead
+  // of a set of interchangeable objects.
+  // ================================================================
+  const ROWS = 42, COLS = 64;
+  const COUNT = ROWS * COLS;
+
+  const dirX = new Float32Array(COUNT), dirY = new Float32Array(COUNT), dirZ = new Float32Array(COUNT);
+  const polarA = new Float32Array(COUNT), azimA = new Float32Array(COUNT);
+  (function computeBaseDirs(){
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    for (let i=0; i<COUNT; i++){
+      const y = 1 - (i/(COUNT-1))*2;
+      const rad = Math.sqrt(Math.max(0,1-y*y));
+      const theta = golden * i;
+      const x = Math.cos(theta)*rad;
+      const z = Math.sin(theta)*rad;
+      dirX[i]=x; dirY[i]=y; dirZ[i]=z;
+      polarA[i] = Math.acos(Math.max(-1,Math.min(1,y)));
+      azimA[i]  = Math.atan2(z,x);
+    }
+  })();
+
+  function hash1(n){ const x = Math.sin(n*127.1+311.7)*43758.5453123; return x-Math.floor(x); }
+
+  // fixed per-particle phase jitter (computed once, never re-randomized)
+  // so the organic turbulence texture is stable and coherent rather than
+  // flickering noise — this is what keeps neighboring particles moving
+  // together instead of independently jittering.
+  const phaseA = new Float32Array(COUNT);
+  const phaseB = new Float32Array(COUNT);
+  for (let i=0; i<COUNT; i++){
+    phaseA[i] = hash1(i*0.913 + 4.7) * Math.PI * 2;
+    phaseB[i] = hash1(i*2.231 + 1.9) * Math.PI * 2;
+  }
+
+  // single calm color gradient (unchanged)
+  const curCol = new Float32Array(COUNT*3);
+  (function buildColor(){
+    const pal = [[0.4,0.7,1.0],[0.6,0.85,1.0],[0.5,0.6,1.0]];
+    for (let i=0; i<COUNT; i++){
+      const t = i/COUNT;
+      const pos = t*(pal.length-1);
+      const lo = Math.floor(pos), hi = Math.min(pal.length-1, lo+1);
+      const f = pos-lo;
+      const c0=pal[lo], c1=pal[hi];
+      curCol[i*3]   = c0[0]+(c1[0]-c0[0])*f;
+      curCol[i*3+1] = c0[1]+(c1[1]-c0[1])*f;
+      curCol[i*3+2] = c0[2]+(c1[2]-c0[2])*f;
+    }
+  })();
+
+  const R0 = 2.15; // base identity radius — the Core always reads as this globe
+
+  // ================================================================
+  // STATE PARAMETERS — one continuous "energy profile" per behavior
+  // state, not a shape. Every frame the current profile eases toward
+  // whichever profile the active state points at, so switching state
+  // never produces a visible jump — only a change in how the SAME
+  // volume breathes, deforms and flows.
+  //
+  //   radius     overall volume scale
+  //   breathe    amplitude of the slow global breathing cycle
+  //   flow       speed of the internal tangential/radial circulation
+  //   turb       amplitude of organic, high-frequency surface turbulence
+  //   asym       amplitude of a slow, migrating asymmetric deformation
+  //              (localized "denser" regions that drift through the
+  //              volume — this is the THINKING/EXECUTING feel)
+  //   irregular  fast, per-particle flicker used only for ERROR
+  //   speak      0/1 gate for the procedural speech envelope
+  //   rotate     auto-rotation speed multiplier
+  //   bright     particle brightness / glow multiplier
+  // ================================================================
+  const STATE_PARAMS = {
+    idle:      { radius:1.00, breathe:1.0, flow:1.0, turb:0.05, asym:0.00, irregular:0.00, speak:0, rotate:1.0, bright:1.00 },
+    listening: { radius:1.05, breathe:1.4, flow:1.2, turb:0.07, asym:0.05, irregular:0.00, speak:0, rotate:1.0, bright:1.06 },
+    thinking:  { radius:1.00, breathe:1.0, flow:2.1, turb:0.09, asym:0.11, irregular:0.00, speak:0, rotate:1.15, bright:1.02 },
+    speaking:  { radius:1.06, breathe:1.3, flow:1.8, turb:0.12, asym:0.10, irregular:0.00, speak:1, rotate:1.1,  bright:1.14 },
+    executing: { radius:1.08, breathe:1.1, flow:2.3, turb:0.17, asym:0.16, irregular:0.00, speak:0, rotate:1.7,  bright:1.10 },
+    success:   { radius:1.16, breathe:1.0, flow:1.3, turb:0.05, asym:0.00, irregular:0.00, speak:0, rotate:1.0,  bright:1.38 },
+    error:     { radius:1.02, breathe:1.0, flow:1.4, turb:0.16, asym:0.10, irregular:0.20, speak:0, rotate:1.0,  bright:1.00 },
+  };
+
+  let stateTarget = 'idle';
+  const curParams = Object.assign({}, STATE_PARAMS.idle);
+
+  // Called by the OS state controller (window.CronyxCore.setState) so the
+  // HUD text/labels and the actual Core animation always describe the
+  // same state. The Core has NO timer of its own for SUCCESS/ERROR — it
+  // simply eases toward whatever profile it's told to target, exactly
+  // like every other state. The outer controller (applyState, above)
+  // is the single source of truth that later calls setState('idle')
+  // again to bring SUCCESS/ERROR back to rest, so the Core and the UI
+  // always revert together.
+  function setCoreState(name){
+    stateTarget = STATE_PARAMS[name] ? name : 'idle';
+  }
+  window.__coreSetState = setCoreState;
+
+  function lerpParams(){
+    const target = STATE_PARAMS[stateTarget] || STATE_PARAMS.idle;
+    const rate = 0.035; // smoothing window (~1-2s) — no hard transitions
+    for (const k in target){
+      curParams[k] += (target[k] - curParams[k]) * rate;
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // Procedural speech envelope — three overlapping motion layers, each
+  // with its own frequency AND its own phase offset, so they drift in
+  // and out of alignment instead of locking into a visible
+  // expand/contract/expand pulse:
+  //   PHRASE   slow overall breathing/energy, with pauses
+  //   SYLLABLE medium-speed bursts
+  //   MICRO    fast, very subtle particle-level movement
+  // Purely a function of time (deterministic); a real audio amplitude
+  // signal can replace this later without touching anything else.
+  // ----------------------------------------------------------------
+  function speechEnvelope(t){
+    const phrase = 0.5 + 0.5*Math.sin(t*0.7 + Math.sin(t*0.13)*2.0);    // slow phrases + pauses
+    const gate   = phrase > 0.32 ? 1 : Math.max(0, phrase/0.32);         // soft pause gate
+    const syll   = Math.max(0, Math.sin(t*3.1 + 1.7 + Math.sin(t*0.9 + 0.6)*1.5)); // syllable bursts, own phase
+    const micro  = 0.5 + 0.5*Math.sin(t*11.0 + 3.4);                     // fine micro-pulses, own phase
+    return { phrase: gate, syll, micro, total: gate * (0.6*syll + 0.4*micro) };
+  }
+
+  // gentle continuous breathing overlay (amplitude modulated by state)
+  const BREATH_AMP = 0.05;
+  const BREATH_FREQ = 0.3;
+
+  // internal circulation — a slow, deterministic flow riding on top of
+  // the current radius (speed modulated by state via curParams.flow)
+  const FLOW_AMP = 0.05;
+  const FLOW_RADIAL_AMP = 0.02;
+  const FLOW_SPEED = 0.15;
+
+  // ================================================================
+  // INTERACTION — drag to rotate, hover to repel (unchanged)
+  // ================================================================
+  let yaw = 0.4, pitch = -0.15;
+  let targetYaw = yaw, targetPitch = pitch;
+  let dragging = false, lastX = 0, lastY = 0;
+  let zoom = 1;
+
+  canvas.addEventListener("pointerdown", e => {
+    dragging = true; lastX=e.clientX; lastY=e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointerup", () => { dragging = false; });
+  canvas.addEventListener("pointercancel", () => { dragging = false; });
+  canvas.addEventListener("pointermove", e => {
+    if (dragging){
+      targetYaw += (e.clientX - lastX) * 0.005;
+      targetPitch += (e.clientY - lastY) * 0.005;
+      targetPitch = Math.max(-1.2, Math.min(1.2, targetPitch));
+      lastX = e.clientX; lastY = e.clientY;
+    }
+    const rect = canvas.getBoundingClientRect();
+    mouseX = e.clientX - rect.left; mouseY = e.clientY - rect.top; mouseActive = true;
+  });
+  canvas.addEventListener("pointerleave", () => { mouseActive = false; });
+
+  let mouseX = 0, mouseY = 0, mouseActive = false;
+  const REPEL_RADIUS = 90;
+  const REPEL_STRENGTH = 46;
+  const REPEL_FALLOFF = 35;
+  const REPEL_EASE_IN = 0.14;
+  const REPEL_EASE_OUT = 0.05;
+  const RIPPLE_AMP = 1.4;
+  const RIPPLE_WAVELEN = 24;
+  const RIPPLE_SPEED = 0.006;
+  const offX = new Float32Array(COUNT);
+  const offY = new Float32Array(COUNT);
+
+  // ================================================================
+  // RENDER LOOP
+  // ================================================================
+  const focal = 5;
+  const autoRotate = 0.15;
+
+  function frame(now){
+    requestAnimationFrame(frame);
+    lerpParams();
+    const t = now * 0.001;
+    const breathe = 1 + Math.sin(t*Math.PI*2*BREATH_FREQ) * BREATH_AMP * curParams.breathe;
+
+    if (!dragging) targetYaw += autoRotate * curParams.rotate * 0.008;
+    yaw += (targetYaw - yaw) * 0.08;
+    pitch += (targetPitch - pitch) * 0.08;
+
+    const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
+    const cosP = Math.cos(pitch), sinP = Math.sin(pitch);
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "lighter";
+
+    const cx = W/2;
+    const cy = H/2;
+    const scaleBase = Math.min(W, H) / 6.5 * zoom;
+
+    const flowT = t * curParams.flow;
+    const errStep = Math.floor(t*6);
+
+    const proj = new Array(COUNT);
+    for (let i=0; i<COUNT; i++){
+      const theta = polarA[i], phi = azimA[i];
+
+      // slow, migrating asymmetric deformation — localized "denser"
+      // regions that drift through the volume over time (THINKING /
+      // EXECUTING). Purely a function of angle + time, so it is always
+      // continuous and never snaps between discrete states.
+      const asym = curParams.asym * (
+        Math.sin(phi*2 + t*0.22 + phaseA[i]*0.15) * Math.sin(theta*1.4 - t*0.15)
+      );
+
+      // organic high-frequency surface turbulence, phase-jittered per
+      // particle so it reads as texture, not banding
+      const turb = curParams.turb * (
+        0.5*Math.sin(phi*6 + t*0.6 + phaseA[i]) +
+        0.5*Math.sin(theta*8 - t*0.9 + phaseB[i])
+      );
+
+      // fast per-particle flicker, stepped a few times a second — used
+      // only by ERROR for a brief irregular disturbance
+      const irregular = curParams.irregular * (hash1(i*3.1 + errStep) - 0.5) * 2;
+
+      // procedural speech deformation — localized regional waves plus
+      // depth-dependent response, so SPEAKING reads as energy moving
+      // through different parts of a 3D volume rather than the whole
+      // globe pulsing uniformly.
+      let speakMod = 0;
+      if (curParams.speak > 0.001){
+        // rotate this particle's base DIRECTION (not its animated
+        // radius) by the Core's current orientation, so "left / center
+        // / right" and "front / back" stay meaningful as it auto-
+        // rotates or is dragged.
+        const rdx = dirX[i]*cosY - dirZ[i]*sinY;
+        const rdz = dirX[i]*sinY + dirZ[i]*cosY;
+        const frontAmt  = 1 - (rdz + 1) * 0.5;          // 1 = facing camera, 0 = facing away
+        const depthGain = 0.7 + 0.45 * frontAmt;         // front reacts a bit more, back a bit softer
+
+        const env = speechEnvelope(t*1.15 + phi*0.18 + theta*0.09);
+        // medium-speed wave traveling left↔right through the volume —
+        // this is what produces "left expands / center compresses /
+        // right expands" as it moves rather than a uniform pulse
+        const regional = Math.sin(rdx*2.6 - t*1.8 + phaseA[i]*0.12);
+        // slow broad region for the phrase-scale layer
+        const phraseWave = 0.5 + 0.5*Math.sin(phi*0.9 + t*0.35);
+        // very fine, fast, per-particle layer for the micro layer
+        const microWave = 0.5 + 0.5*Math.sin(phaseB[i] + t*9.0);
+
+        speakMod = curParams.speak * 0.16 * depthGain * (
+          0.30 * env.phrase * phraseWave +
+          0.45 * env.syll   * (0.5 + 0.5*regional) +
+          0.25 * env.micro  * microWave
+        );
+      }
+
+      const radiusMult = 1 + asym + turb + irregular + speakMod;
+      const r = R0 * curParams.radius * radiusMult;
+
+      let x = dirX[i]*r, y = dirY[i]*r, z = dirZ[i]*r;
+
+      // internal circulation (unchanged mechanism, speed follows state)
+      const swirl = Math.sin(flowT*FLOW_SPEED + polarA[i]*1.6) * FLOW_AMP;
+      x += -dirZ[i] * swirl;
+      z +=  dirX[i] * swirl;
+      const radial = Math.sin(flowT*FLOW_SPEED*0.7 + azimA[i]*2.0) * FLOW_RADIAL_AMP;
+      x += dirX[i]*radial; y += dirY[i]*radial; z += dirZ[i]*radial;
+
+      x *= breathe; y *= breathe; z *= breathe;
+
+      let x1 = x*cosY - z*sinY;
+      let z1 = x*sinY + z*cosY;
+      let y1 = y*cosP - z1*sinP;
+      let z2 = y*sinP + z1*cosP;
+
+      const persp = focal / (focal + z2);
+      let sx = cx + x1 * scaleBase * persp;
+      let sy = cy + y1 * scaleBase * persp;
+
+      let tx = 0, ty = 0;
+      if (mouseActive){
+        const dx = sx - mouseX, dy = sy - mouseY;
+        const dist = Math.hypot(dx, dy);
+        const outer = REPEL_RADIUS + REPEL_FALLOFF;
+        if (dist < outer && dist > 0.001){
+          const n = dist / outer;
+          const falloff = 1 - n*n*(3 - 2*n);
+          const depthPush = 0.55 + 0.45 * Math.max(0, Math.min(1, (persp - 0.7) / (1.35 - 0.7)));
+          const force = falloff * REPEL_STRENGTH * depthPush;
+          tx = (dx/dist) * force;
+          ty = (dy/dist) * force;
+
+          const ripple = Math.sin(dist / RIPPLE_WAVELEN - now * RIPPLE_SPEED) * RIPPLE_AMP * falloff;
+          tx += (dx/dist) * ripple;
+          ty += (dy/dist) * ripple;
+        }
+      }
+      const targetMag = Math.hypot(tx, ty), curMag = Math.hypot(offX[i], offY[i]);
+      const ease = targetMag > curMag ? REPEL_EASE_IN : REPEL_EASE_OUT;
+      offX[i] += (tx - offX[i]) * ease;
+      offY[i] += (ty - offY[i]) * ease;
+      sx += offX[i]; sy += offY[i];
+
+      proj[i] = { sx, sy, z: z2, i, persp };
+    }
+    proj.sort((a,b) => a.z - b.z);
+
+    for (const p of proj){
+      const r = curCol[p.i*3], g = curCol[p.i*3+1], b = curCol[p.i*3+2];
+      const depth = Math.max(0.7, Math.min(1.35, p.persp));
+      const depthT = (depth - 0.7) / (1.35 - 0.7);
+      const size = (1.6 + Math.sin(t*2 + p.i*0.01)*0.3) * depth;
+      const alpha = Math.min(1, (0.62 + 0.3 * depthT) * curParams.bright);
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${r*255|0},${g*255|0},${b*255|0},${alpha.toFixed(3)})`;
+      ctx.arc(p.sx, p.sy, Math.max(0.4, size), 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    const glowR = 60 * zoom * (1 + Math.sin(t*1.6)*0.08) * breathe * curParams.bright;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+    grad.addColorStop(0, "rgba(100,160,255,0.25)");
+    grad.addColorStop(1, "rgba(100,160,255,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, glowR, 0, Math.PI*2);
+    ctx.fill();
+  }
+  requestAnimationFrame(frame);
+  })();
+</script>
+
+
+</body>
+</html>

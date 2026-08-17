@@ -102,4 +102,50 @@ void main() {
       await events.close();
     },
   );
+
+  test(
+    'text command is interpreted then routed through the PC Agent',
+    () async {
+      final events = EventBus();
+      final eventTypes = <String>[];
+      final subscription = events.events.listen(
+        (event) => eventTypes.add(event.type),
+      );
+      final launcher = MockApplicationLauncher();
+      final tool = LaunchApplicationTool(
+        registry: createChromeRegistry(),
+        launcher: launcher,
+        events: events,
+      );
+      final provider = RecordingModelProvider();
+      final orchestrator = Orchestrator(
+        modelProvider: provider,
+        events: events,
+        agents: [
+          PcAgent(
+            launchApplicationTool: tool,
+            authorizer: AllowListPermissionAuthorizer({Permission.execute}),
+          ),
+        ],
+        tools: [tool],
+        commandInterpreter: const DeterministicCommandInterpreter(),
+      );
+
+      final result = await orchestrator.handle('Open Chrome');
+
+      expect(result.isSuccess, isTrue);
+      expect(provider.callCount, 0);
+      expect(launcher.launchCount, 1);
+      expect(eventTypes, [
+        'orchestrator.request.received',
+        'orchestrator.command.selected',
+        'pc.command.requested',
+        'tool.started',
+        'tool.succeeded',
+        'application.launched',
+      ]);
+      await subscription.cancel();
+      await events.close();
+    },
+  );
 }

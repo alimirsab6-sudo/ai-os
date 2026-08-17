@@ -79,9 +79,10 @@ final class LaunchApplicationTool extends AuthorizedTool {
         ToolOutput(
           data: {
             'application_id': receipt.applicationId,
+            'display_name': application.descriptor.displayName,
             'process_id': receipt.processId,
           },
-          summary: 'Application launched.',
+          summary: '${application.descriptor.displayName} opened successfully.',
         ),
       ),
       Result.failure,

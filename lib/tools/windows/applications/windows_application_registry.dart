@@ -17,9 +17,21 @@ final class WindowsApplicationRegistry implements ApplicationRegistry {
   }) : _environment = environment ?? Platform.environment,
        _fileExists = fileExists ?? _defaultFileExists {
     if (registerDefaults) {
-      register(chromeDescriptor);
+      for (final descriptor in defaultApplications) {
+        register(descriptor);
+      }
     }
   }
+
+  static const List<ApplicationDescriptor> defaultApplications = [
+    chromeDescriptor,
+    edgeDescriptor,
+    notepadDescriptor,
+    calculatorDescriptor,
+    fileExplorerDescriptor,
+    settingsDescriptor,
+    taskManagerDescriptor,
+  ];
 
   static const ApplicationDescriptor chromeDescriptor = ApplicationDescriptor(
     id: 'chrome',
@@ -41,6 +53,95 @@ final class WindowsApplicationRegistry implements ApplicationRegistry {
     ],
     executableNames: ['chrome.exe'],
   );
+
+  static const ApplicationDescriptor edgeDescriptor = ApplicationDescriptor(
+    id: 'edge',
+    displayName: 'Microsoft Edge',
+    resolutionStrategy: ExecutableResolutionStrategy.windowsKnownLocations,
+    locations: [
+      ExecutableLocation(
+        environmentVariable: 'ProgramFiles(x86)',
+        relativePath: r'Microsoft\Edge\Application\msedge.exe',
+      ),
+      ExecutableLocation(
+        environmentVariable: 'ProgramFiles',
+        relativePath: r'Microsoft\Edge\Application\msedge.exe',
+      ),
+      ExecutableLocation(
+        environmentVariable: 'LOCALAPPDATA',
+        relativePath: r'Microsoft\Edge\Application\msedge.exe',
+      ),
+    ],
+    executableNames: ['msedge.exe'],
+  );
+
+  static const ApplicationDescriptor notepadDescriptor = ApplicationDescriptor(
+    id: 'notepad',
+    displayName: 'Notepad',
+    resolutionStrategy: ExecutableResolutionStrategy.windowsKnownLocations,
+    locations: [
+      ExecutableLocation(
+        environmentVariable: 'SystemRoot',
+        relativePath: r'System32\notepad.exe',
+      ),
+    ],
+    executableNames: ['notepad.exe'],
+  );
+
+  static const ApplicationDescriptor calculatorDescriptor =
+      ApplicationDescriptor(
+        id: 'calculator',
+        displayName: 'Calculator',
+        resolutionStrategy: ExecutableResolutionStrategy.windowsKnownLocations,
+        locations: [
+          ExecutableLocation(
+            environmentVariable: 'SystemRoot',
+            relativePath: r'System32\calc.exe',
+          ),
+        ],
+        executableNames: ['calc.exe', 'calculatorapp.exe'],
+      );
+
+  static const ApplicationDescriptor fileExplorerDescriptor =
+      ApplicationDescriptor(
+        id: 'file_explorer',
+        displayName: 'File Explorer',
+        resolutionStrategy: ExecutableResolutionStrategy.windowsKnownLocations,
+        locations: [
+          ExecutableLocation(
+            environmentVariable: 'SystemRoot',
+            relativePath: 'explorer.exe',
+          ),
+        ],
+        executableNames: ['explorer.exe'],
+      );
+
+  static const ApplicationDescriptor settingsDescriptor = ApplicationDescriptor(
+    id: 'settings',
+    displayName: 'Windows Settings',
+    resolutionStrategy: ExecutableResolutionStrategy.windowsKnownLocations,
+    locations: [
+      ExecutableLocation(
+        environmentVariable: 'SystemRoot',
+        relativePath: r'ImmersiveControlPanel\SystemSettings.exe',
+      ),
+    ],
+    executableNames: ['systemsettings.exe'],
+  );
+
+  static const ApplicationDescriptor taskManagerDescriptor =
+      ApplicationDescriptor(
+        id: 'task_manager',
+        displayName: 'Task Manager',
+        resolutionStrategy: ExecutableResolutionStrategy.windowsKnownLocations,
+        locations: [
+          ExecutableLocation(
+            environmentVariable: 'SystemRoot',
+            relativePath: r'System32\Taskmgr.exe',
+          ),
+        ],
+        executableNames: ['taskmgr.exe'],
+      );
 
   final Map<String, String> _environment;
   final FileExists _fileExists;

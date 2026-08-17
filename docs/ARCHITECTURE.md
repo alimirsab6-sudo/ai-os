@@ -2,8 +2,10 @@
 
 ## Scope
 
-Milestone 3B.2 retains the earlier boundaries and adds Microsoft UI Automation
-Value/SetValue. Invoke, Chrome launch, window discovery/control, and UI
+Milestone 3C.1 retains the earlier boundaries and adds local Chrome profile
+discovery, validated profile-aware launch, a Browser Agent routing boundary,
+and selected-profile BrowserSession state. Value/SetValue, Invoke, generic
+Chrome launch, window discovery/control, and UI
 inspection remain intact. The Flutter Windows runner remains unchanged, and
 platform-neutral models/interfaces remain plain Dart.
 
@@ -18,6 +20,10 @@ platform-neutral models/interfaces remain plain Dart.
 - `agents/` defines specialized coordinators. The PC Agent routes structured
   launch, discovery, top-level window control, bounded UI inspection, and
   semantic Invoke and SetValue requests to configured tools.
+- `agents/browser_agent/` routes Chrome profile discovery/launch and validated
+  HTTP(S) URL opening. It owns no tabs or website interaction behavior.
+- `browser/` holds application-neutral browser session state plus isolated
+  Chrome profile and Windows launch adapters.
 - `tools/` defines structured metadata, input schemas, execution results, and
   the authorization gate. Windows application resolution and launching are
   isolated below `tools/windows/`; native Win32 details stay in the discovery
@@ -45,6 +51,26 @@ Composition root -> all concrete implementations
 ```
 
 ## Orchestrator flows
+
+The approved CronyX shell uses a deterministic command interpreter for the
+small Phase 1 command vocabulary. A recognized request becomes an existing
+structured `OrchestratorCommand`; unrecognized text returns
+`unsupported_command` and is never treated as a process or shell string.
+
+```text
+Command bar / Quick Action
+  -> Orchestrator.handle(text)
+  -> DeterministicCommandInterpreter
+  -> LaunchApplicationCommand / OpenUrlCommand
+  -> PC Agent / Browser Agent
+  -> permission-checked Tool
+  -> structured Result + EventBus lifecycle
+  -> Core, HUD, Live Action, Activity
+```
+
+`OpenUrlCommand` accepts only absolute HTTP(S) URLs without user-info. Its
+Windows adapter resolves Edge or Chrome through the application allow-list and
+starts that executable directly with one URL argument and `runInShell: false`.
 
 The provider-oriented flow established in Milestone 0B remains available:
 
@@ -162,6 +188,26 @@ No model provider participates. Events are `ui.value.requested`,
 `ui.value.started`, and either `ui.value.succeeded` or `ui.value.failed`.
 They contain operation, target IDs, success/failure, and sanitized error
 metadata only. The submitted value is never placed in an event or error log.
+
+Milestone 3C.1 adds two deterministic Browser Agent routes:
+
+```text
+DiscoverChromeProfilesCommand
+  -> Orchestrator -> BrowserAgent -> DiscoverChromeProfilesTool
+  -> PermissionAuthorizer(read) -> ChromeProfileRegistry
+
+LaunchChromeProfileCommand(profileId)
+  -> Orchestrator -> BrowserAgent -> LaunchChromeProfileTool
+  -> PermissionAuthorizer(execute) -> ChromeLauncher
+  -> ChromeProfileRegistry + ChromeInstallationResolver
+  -> direct Windows process start -> BrowserSession selected profile
+```
+
+Neither route consults `ModelProvider`. Discovery emits
+`chrome.profile.discovery.requested/started/succeeded/failed`; launch emits
+the corresponding `chrome.profile.launch.*` lifecycle. Events contain counts,
+opaque profile IDs, safe display names, success, and error codes only—never
+profile paths, cookies, tokens, history, or credentials.
 
 ## Agent and tool relationship
 
@@ -311,9 +357,10 @@ frees the BSTR/native allocations, and uninitializes COM in every path.
 name, resolution strategy, and known executable locations. The local
 `ApplicationRegistry` supports registration, lookup, listing, and resolution.
 
-`WindowsApplicationRegistry` registers Chrome and checks only fixed Chrome
-paths below the Windows `ProgramFiles`, `ProgramFiles(x86)`, and `LOCALAPPDATA`
-roots. It does not crawl the filesystem or accept user-supplied paths.
+`WindowsApplicationRegistry` registers Chrome, Edge, Notepad, Calculator, File
+Explorer, Windows Settings, and Task Manager. It checks only fixed executable
+locations below `ProgramFiles`, `ProgramFiles(x86)`, `LOCALAPPDATA`, and
+`SystemRoot`. It does not crawl the filesystem or accept user-supplied paths.
 
 `ApplicationLauncher` separates process creation from lookup and tools. Its
 Windows implementation receives a resolved descriptor, starts that executable
@@ -338,21 +385,42 @@ the existing `Tool` contract, and translate execution inputs/results at the
 edge. To the orchestrator, built-in and MCP-discovered tools remain the same
 kind of object. No MCP networking or external server is present yet.
 
-## Future Browser Agent and Chrome profiles (not implemented)
+## Chrome profile and Browser Agent foundation
 
-A future Browser Agent will sit above generic Windows UI Automation and any
-browser-specific tools. Generic UI Automation remains application-neutral and
-must not gain Chrome selectors, navigation semantics, or profile assumptions.
+`ChromeProfile` contains an opaque runtime ID, metadata-derived display name,
+Chrome directory identifier, optional safe avatar identifier, and default
+indicator. Directory identifiers such as `Default` and `Profile 1` are never
+interpreted as Personal or Work; only Chrome's actual metadata supplies the
+display name.
 
-Chrome profiles will use a dedicated future `ChromeProfileRegistry` that
-discovers local metadata, assigns stable AI OS profile IDs, keeps the human-
-readable name distinct from the actual profile directory, and never assumes a
-directory such as `Profile 1` means Personal or Work. A future
-`BrowserSession` will require the selected profile alongside its active window
-and browser state; profile-specific requests must not silently fall back to the
-default profile. Profile discovery/launching, browser session state,
-navigation, tabs, and the Browser Agent are FUTURE and were not implemented in
-Milestone 3B.2.
+`WindowsChromeProfileRegistry` reads the standard current-user
+`LOCALAPPDATA\\Google\\Chrome\\User Data\\Local State` JSON. It does not scan
+the drive, recurse through directories, scrape Chrome UI, invoke a shell, or
+require Chrome to be running. It reads `profile.info_cache`, respects
+`profiles_order`, checks only the named immediate profile directory, skips an
+individually malformed/inaccessible entry, and returns structured failures for
+missing or malformed global metadata. IDs have the form
+`chrome_profile_<opaque-runtime-hash>` and remain stable for the registry
+instance. Callers cannot submit directory identifiers to launch APIs.
+
+`WindowsChromeInstallationResolver` reuses the allow-listed application
+registry's known Program Files and per-user Chrome locations and additionally
+requires a resolved `chrome.exe`. `WindowsChromeLauncher` accepts only an
+opaque profile ID, resolves it through the populated registry, resolves the
+executable independently, internally creates exactly
+`--profile-directory=<validated discovered identifier>`, and starts the
+executable directly with `runInShell: false`. It accepts no caller path,
+directory, argument list, or shell fragment.
+
+`BrowserSession` stores the selected `ChromeProfile` after a successful launch.
+The minimal `BrowserAgent` owns these profile routes separately from PC Agent
+and generic Windows UI Automation. Reliable automatic confirmation of which
+already-running Chrome window belongs to the new process is not available in
+this foundation, so verification reports the validated selected profile and
+process launch rather than guessing from windows.
+
+Navigation, tabs, search, websites, DOM/CDP integration, and page interaction
+are FUTURE / NOT IMPLEMENTED.
 
 ## Security boundary
 
@@ -382,6 +450,11 @@ Authorization occurs before discovery, element resolution, or COM SetValue.
 Value lifecycle events are projected from target IDs and operation metadata;
 neither success nor failure events receive the submitted text, and failure
 messages are sanitized.
+Chrome profile discovery requires `read`; metadata access occurs only after
+authorization. Profile-aware Chrome launch requires `execute`; profile
+resolution, executable resolution, process creation, and BrowserSession update
+occur only after authorization. The APIs expose no arbitrary executable,
+directory, argument, shell, PowerShell, or cmd execution surface.
 Future consent prompts, audit logs, resource scopes, and persistent policies
 can implement `PermissionAuthorizer` without allowing tools to bypass it.
 
@@ -394,7 +467,8 @@ implementation is volatile and intentionally has no vector or cloud backend.
 
 ## Current limitations
 
-Only Chrome launch, window discovery/control, bounded UI discovery, Invoke,
+Only generic/profile-aware Chrome launch, Chrome profile discovery and selected
+session profile state, window discovery/control, bounded UI discovery, Invoke,
 and Value/SetValue are implemented. Selection, Toggle, ExpandCollapse, Scroll,
 RangeValue, and Text actions are not implemented. There is no navigation, screenshot/OCR,
 browser-specific control, keyboard/mouse input, arbitrary process/terminal

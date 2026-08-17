@@ -1,7 +1,18 @@
 import '../agents/agent.dart';
+import '../agents/browser_agent/browser_agent.dart';
 import '../agents/pc_agent/pc_agent.dart';
 import '../ai/model_provider/mock_model_provider.dart';
 import '../ai/model_provider/model_provider.dart';
+import '../browser/browser_session.dart';
+import '../browser/browser_url_launcher.dart';
+import '../browser/windows_browser_url_launcher.dart';
+import '../browser/chrome/chrome_installation_resolver.dart';
+import '../browser/chrome/chrome_launcher.dart';
+import '../browser/chrome/chrome_profile_registry.dart';
+import '../browser/chrome/chrome_profile_tools.dart';
+import '../browser/chrome/windows_chrome_installation_resolver.dart';
+import '../browser/chrome/windows_chrome_launcher.dart';
+import '../browser/chrome/windows_chrome_profile_registry.dart';
 import '../core/configuration/app_configuration.dart';
 import '../core/events/event_bus.dart';
 import '../core/orchestrator/orchestrator.dart';
@@ -10,6 +21,7 @@ import '../mcp/mcp_gateway.dart';
 import '../memory/memory_store.dart';
 import '../skills/skill.dart';
 import '../tools/browser/browser_tool.dart';
+import '../tools/browser/open_url_tool.dart';
 import '../tools/files/file_tool.dart';
 import '../tools/terminal/terminal_tool.dart';
 import '../tools/tool.dart';
@@ -39,6 +51,33 @@ final class CompositionRoot {
     final events = EventBus();
     final authorizer = AllowListPermissionAuthorizer(config.permissions);
     final applicationRegistry = WindowsApplicationRegistry();
+    final chromeInstallationResolver = WindowsChromeInstallationResolver(
+      applications: applicationRegistry,
+    );
+    final chromeProfileRegistry = WindowsChromeProfileRegistry(
+      installationResolver: chromeInstallationResolver,
+    );
+    final browserSession = BrowserSession();
+    final browserUrlLauncher = WindowsBrowserUrlLauncher(
+      applications: applicationRegistry,
+    );
+    final openUrlTool = OpenUrlTool(
+      launcher: browserUrlLauncher,
+      events: events,
+    );
+    final chromeLauncher = WindowsChromeLauncher(
+      profiles: chromeProfileRegistry,
+      installationResolver: chromeInstallationResolver,
+    );
+    final discoverChromeProfilesTool = DiscoverChromeProfilesTool(
+      registry: chromeProfileRegistry,
+      events: events,
+    );
+    final launchChromeProfileTool = LaunchChromeProfileTool(
+      launcher: chromeLauncher,
+      session: browserSession,
+      events: events,
+    );
     const applicationLauncher = WindowsProcessLauncher();
     final launchApplicationTool = LaunchApplicationTool(
       registry: applicationRegistry,
@@ -107,6 +146,9 @@ final class CompositionRoot {
       inspectUiTool,
       invokeUiElementTool,
       setUiElementValueTool,
+      discoverChromeProfilesTool,
+      launchChromeProfileTool,
+      openUrlTool,
       const FileToolPlaceholder(),
       const BrowserToolPlaceholder(),
       const TerminalToolPlaceholder(),
@@ -125,6 +167,12 @@ final class CompositionRoot {
         inspectUiTool: inspectUiTool,
         invokeUiElementTool: invokeUiElementTool,
         setUiElementValueTool: setUiElementValueTool,
+      ),
+      BrowserAgent(
+        authorizer: authorizer,
+        discoverChromeProfilesTool: discoverChromeProfilesTool,
+        launchChromeProfileTool: launchChromeProfileTool,
+        openUrlTool: openUrlTool,
       ),
     ];
     const provider = MockModelProvider(
@@ -150,17 +198,27 @@ final class CompositionRoot {
       ..register<InspectUiTool>(inspectUiTool)
       ..register<InvokeUiElementTool>(invokeUiElementTool)
       ..register<SetUiElementValueTool>(setUiElementValueTool)
+      ..register<ChromeInstallationResolver>(chromeInstallationResolver)
+      ..register<ChromeProfileRegistry>(chromeProfileRegistry)
+      ..register<ChromeLauncher>(chromeLauncher)
+      ..register<BrowserSession>(browserSession)
+      ..register<BrowserUrlLauncher>(browserUrlLauncher)
+      ..register<OpenUrlTool>(openUrlTool)
+      ..register<DiscoverChromeProfilesTool>(discoverChromeProfilesTool)
+      ..register<LaunchChromeProfileTool>(launchChromeProfileTool)
       ..register<MemoryStore>(InMemoryStore())
       ..register<McpGateway>(const DisabledMcpGateway())
       ..register<Skill>(const PlaceholderSkill())
       ..register<ModelProvider>(provider)
-      ..register<PcAgent>(agents.single as PcAgent)
+      ..register<PcAgent>(agents.whereType<PcAgent>().single)
+      ..register<BrowserAgent>(agents.whereType<BrowserAgent>().single)
       ..register<Orchestrator>(
         Orchestrator(
           modelProvider: provider,
           events: events,
           agents: agents,
           tools: tools,
+          commandInterpreter: const DeterministicCommandInterpreter(),
         ),
       );
   }

@@ -1,4 +1,5 @@
 import '../../agents/agent.dart';
+import '../../agents/browser_agent/browser_agent.dart';
 import '../../agents/pc_agent/pc_agent.dart';
 import '../../ai/model_provider/model_provider.dart';
 import '../../tools/tool.dart';
@@ -96,6 +97,99 @@ final class SetUiElementValueCommand extends OrchestratorCommand {
   final String value;
 }
 
+final class DiscoverChromeProfilesCommand extends OrchestratorCommand {
+  const DiscoverChromeProfilesCommand();
+}
+
+final class LaunchChromeProfileCommand extends OrchestratorCommand {
+  const LaunchChromeProfileCommand({required this.profileId});
+
+  final String profileId;
+}
+
+final class OpenUrlCommand extends OrchestratorCommand {
+  const OpenUrlCommand({required this.url});
+
+  final Uri url;
+}
+
+abstract interface class CommandInterpreter {
+  Result<OrchestratorCommand> interpret(String request);
+}
+
+/// Recognizes only the explicit, controlled actions exposed by this phase.
+/// Unrecognized text never becomes a process or shell command.
+final class DeterministicCommandInterpreter implements CommandInterpreter {
+  const DeterministicCommandInterpreter();
+
+  static const Map<String, String> _applicationAliases = {
+    'open chrome': 'chrome',
+    'launch chrome': 'chrome',
+    'start chrome': 'chrome',
+    'open google chrome': 'chrome',
+    'open browser': 'chrome',
+    'open microsoft edge': 'edge',
+    'open edge': 'edge',
+    'launch edge': 'edge',
+    'open notepad': 'notepad',
+    'launch notepad': 'notepad',
+    'open calculator': 'calculator',
+    'open calc': 'calculator',
+    'open file explorer': 'file_explorer',
+    'open explorer': 'file_explorer',
+    'open my pc': 'file_explorer',
+    'browse files': 'file_explorer',
+    'show my files': 'file_explorer',
+    'open windows settings': 'settings',
+    'open settings': 'settings',
+    'view tasks': 'task_manager',
+    'open task manager': 'task_manager',
+  };
+
+  @override
+  Result<OrchestratorCommand> interpret(String request) {
+    final trimmed = request.trim();
+    final urlMatch = RegExp(
+      r'^(?:open|browse|go to|navigate to)\s+(https?://\S+)$',
+      caseSensitive: false,
+    ).firstMatch(trimmed);
+    if (urlMatch != null) {
+      final candidate = urlMatch
+          .group(1)!
+          .replaceFirst(RegExp(r'[.,!?]+$'), '');
+      final url = Uri.tryParse(candidate);
+      if (url != null &&
+          (url.scheme == 'http' || url.scheme == 'https') &&
+          url.host.isNotEmpty &&
+          url.userInfo.isEmpty) {
+        return Result.success(OpenUrlCommand(url: url));
+      }
+      return const Result.failure(
+        Failure(
+          'That web address is not a valid HTTP or HTTPS URL.',
+          code: 'invalid_url',
+        ),
+      );
+    }
+
+    var normalized = trimmed.toLowerCase();
+    normalized = normalized.replaceAll(RegExp(r'[.!?]+$'), '').trim();
+    normalized = normalized.replaceFirst(RegExp(r'^please\s+'), '');
+    final applicationId = _applicationAliases[normalized];
+    if (applicationId != null) {
+      return Result.success(
+        LaunchApplicationCommand(applicationId: applicationId),
+      );
+    }
+    return const Result.failure(
+      Failure(
+        'That command is not supported yet.',
+        code: 'unsupported_command',
+      ),
+    );
+  }
+}
+
 /// Coordinates requests while keeping providers, agents, and tools replaceable.
 final class Orchestrator {
   Orchestrator({
@@ -103,6 +197,7 @@ final class Orchestrator {
     required this.events,
     List<Agent> agents = const [],
     List<Tool> tools = const [],
+    this.commandInterpreter,
   }) : agents = List.unmodifiable(agents),
        tools = List.unmodifiable(tools);
 
@@ -110,6 +205,10 @@ final class Orchestrator {
   final EventPublisher events;
   final List<Agent> agents;
   final List<Tool> tools;
+  final CommandInterpreter? commandInterpreter;
+
+  Stream<AppEvent>? get eventStream =>
+      events is EventBus ? (events as EventBus).events : null;
 
   Future<Result<OrchestratorResponse>> handle(String userRequest) async {
     if (userRequest.trim().isEmpty) {
@@ -123,6 +222,29 @@ final class Orchestrator {
         occurredAt: DateTime.now().toUtc(),
       ),
     );
+    final interpreter = commandInterpreter;
+    if (interpreter != null) {
+      final interpreted = interpreter.interpret(userRequest);
+      if (interpreted case Failed<OrchestratorCommand>(:final failure)) {
+        events.publish(
+          ApplicationEvent(
+            type: 'orchestrator.request.rejected',
+            occurredAt: DateTime.now().toUtc(),
+            data: {'failure_code': failure.code},
+          ),
+        );
+        return Result.failure(failure);
+      }
+      final command = (interpreted as Success<OrchestratorCommand>).value;
+      events.publish(
+        ApplicationEvent(
+          type: 'orchestrator.command.selected',
+          occurredAt: DateTime.now().toUtc(),
+          data: _commandSelectionData(command),
+        ),
+      );
+      return executeCommand(command);
+    }
     final providerResult = await modelProvider.generate(
       ModelRequest(
         messages: [
@@ -242,16 +364,47 @@ final class Orchestrator {
             },
           ),
         );
+      case DiscoverChromeProfilesCommand():
+        agentRequest = const DiscoverChromeProfilesAgentRequest();
+        events.publish(
+          ApplicationEvent(
+            type: 'chrome.profile.discovery.requested',
+            occurredAt: DateTime.now().toUtc(),
+          ),
+        );
+      case LaunchChromeProfileCommand(:final profileId):
+        agentRequest = LaunchChromeProfileAgentRequest(profileId: profileId);
+        events.publish(
+          ApplicationEvent(
+            type: 'chrome.profile.launch.requested',
+            occurredAt: DateTime.now().toUtc(),
+            data: {'profile_id': profileId},
+          ),
+        );
+      case OpenUrlCommand(:final url):
+        agentRequest = OpenUrlAgentRequest(url: url);
+        events.publish(
+          ApplicationEvent(
+            type: 'browser.url.requested',
+            occurredAt: DateTime.now().toUtc(),
+            data: {'host': url.host},
+          ),
+        );
     }
 
-    final pcAgent = _findPcAgent();
-    if (pcAgent == null) {
+    final Agent? targetAgent = switch (agentRequest) {
+      DiscoverChromeProfilesAgentRequest() ||
+      LaunchChromeProfileAgentRequest() ||
+      OpenUrlAgentRequest() => _findBrowserAgent(),
+      _ => _findPcAgent(),
+    };
+    if (targetAgent == null) {
       return const Result.failure(
-        Failure('PC Agent is not configured.', code: 'pc_agent_unavailable'),
+        Failure('Required agent is not configured.', code: 'agent_unavailable'),
       );
     }
 
-    final result = await pcAgent.handle(agentRequest);
+    final result = await targetAgent.handle(agentRequest);
     return result.fold(
       (response) => Result.success(
         OrchestratorResponse(message: response.message, data: response.data),
@@ -288,6 +441,28 @@ final class Orchestrator {
     }
     return null;
   }
+
+  BrowserAgent? _findBrowserAgent() {
+    for (final agent in agents) {
+      if (agent is BrowserAgent) return agent;
+    }
+    return null;
+  }
+
+  Map<String, Object?> _commandSelectionData(OrchestratorCommand command) =>
+      switch (command) {
+        LaunchApplicationCommand(:final applicationId) => {
+          'action': 'launch_application',
+          'agent': 'PC Agent',
+          'application_id': applicationId,
+        },
+        OpenUrlCommand(:final url) => {
+          'action': 'open_url',
+          'agent': 'Browser Agent',
+          'host': url.host,
+        },
+        _ => {'action': command.runtimeType.toString()},
+      };
 
   ModelToolDefinition _toModelTool(Tool tool) => ModelToolDefinition(
     id: tool.id,

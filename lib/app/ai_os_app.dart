@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/orchestrator/orchestrator.dart';
+import '../ui/shell/cronyx_os_shell.dart';
 
 class AiOsApp extends StatelessWidget {
   const AiOsApp({required this.orchestrator, super.key});
@@ -9,17 +10,14 @@ class AiOsApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'AI OS',
-    theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue)),
-    home: const ArchitecturePlaceholderPage(),
+    title: 'CronyX AI OS',
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData(
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: const Color(0xFF030507),
+      fontFamily: 'Segoe UI',
+      useMaterial3: true,
+    ),
+    home: CronyxOsShell(orchestrator: orchestrator),
   );
-}
-
-/// Temporary shell only; product naming and interactive UI remain undecided.
-class ArchitecturePlaceholderPage extends StatelessWidget {
-  const ArchitecturePlaceholderPage({super.key});
-
-  @override
-  Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: Text('Core architecture foundation')));
 }

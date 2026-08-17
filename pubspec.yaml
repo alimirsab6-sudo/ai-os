@@ -18,3 +18,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  shaders:
+    - lib/ui/world/ai_core/shaders/living_ai_core.frag

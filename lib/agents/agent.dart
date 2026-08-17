@@ -79,6 +79,22 @@ final class SetUiElementValueAgentRequest extends AgentRequest {
   final String value;
 }
 
+final class DiscoverChromeProfilesAgentRequest extends AgentRequest {
+  const DiscoverChromeProfilesAgentRequest();
+}
+
+final class LaunchChromeProfileAgentRequest extends AgentRequest {
+  const LaunchChromeProfileAgentRequest({required this.profileId});
+
+  final String profileId;
+}
+
+final class OpenUrlAgentRequest extends AgentRequest {
+  const OpenUrlAgentRequest({required this.url});
+
+  final Uri url;
+}
+
 final class AgentResponse {
   const AgentResponse({required this.message, this.data = const {}});
 

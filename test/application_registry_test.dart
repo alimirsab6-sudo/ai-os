@@ -16,7 +16,18 @@ void main() {
       lookup.fold((value) => value.displayName, (_) => null),
       'Google Chrome',
     );
-    expect(registry.listKnownApplications(), hasLength(1));
+    expect(
+      registry.listKnownApplications().map((application) => application.id),
+      containsAll(<String>{
+        'chrome',
+        'edge',
+        'notepad',
+        'calculator',
+        'file_explorer',
+        'settings',
+        'task_manager',
+      }),
+    );
   });
 
   test('resolves Chrome only from a configured known Windows location', () {
