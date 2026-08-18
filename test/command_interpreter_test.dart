@@ -49,8 +49,17 @@ void main() {
       'Please   launch   Microsoft Edge.',
       'Could you please open Notepad!',
       'can you please start calculator',
+      'can you open notepad',
+      'could you launch edge',
     ];
-    const expectedIds = ['chrome', 'edge', 'notepad', 'calculator'];
+    const expectedIds = [
+      'chrome',
+      'edge',
+      'notepad',
+      'calculator',
+      'notepad',
+      'edge',
+    ];
 
     for (var index = 0; index < commands.length; index++) {
       final result = interpreter.interpret(commands[index]);
@@ -61,6 +70,26 @@ void main() {
           (_) => null,
         ),
         expectedIds[index],
+      );
+    }
+  });
+
+  test('natural request opens the existing CronyX Browser', () {
+    const browserInterpreter = DeterministicCommandInterpreter(
+      embeddedBrowserEnabled: true,
+    );
+
+    for (final phrase in [
+      'Can you open the browser?',
+      'Could you please show the browser',
+      'on the browser',
+      'open the brower',
+    ]) {
+      final result = browserInterpreter.interpret(phrase);
+      expect(result.isSuccess, isTrue, reason: phrase);
+      expect(
+        result.fold((command) => command, (_) => null),
+        isA<InitializeBrowserCommand>(),
       );
     }
   });

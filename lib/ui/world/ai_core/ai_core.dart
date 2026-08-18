@@ -9,12 +9,14 @@ class AiCore extends StatelessWidget {
     required this.controller,
     this.size,
     this.animationEnabled = true,
+    this.particleDensity = 1,
     super.key,
-  });
+  }) : assert(particleDensity > 0 && particleDensity <= 1);
 
   final AiCoreController controller;
   final double? size;
   final bool animationEnabled;
+  final double particleDensity;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -28,6 +30,7 @@ class AiCore extends StatelessWidget {
     child: AiCoreRenderer(
       controller: controller,
       animationEnabled: animationEnabled,
+      particleDensity: particleDensity,
     ),
   );
 }

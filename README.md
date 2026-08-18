@@ -1,17 +1,45 @@
 # AI OS
 
+## Local voice assistant
+
+CronyX has an offline Windows voice pipeline built around the existing
+architecture:
+
+```text
+Microphone → Crony → speaker verification → local STT
+→ existing Command Interpreter → Orchestrator → Agent → Tool → permission
+→ Kokoro af_bella response
+```
+
+Enroll through the existing command bar with `Enroll my voice as <name>`.
+Profiles remain local and contain only a normalized speaker embedding plus
+minimal identity metadata. `Reset voice profile` removes the profile. Unknown
+voices remain locked even if they speak the owner's name.
+
+See [runtime/voice/README.md](runtime/voice/README.md) for privacy, threshold,
+enrollment, reset, models, and manual Windows testing.
+
 AI OS is a native Windows Flutter application being built around a local,
 provider-agnostic orchestration core. The final product name and interactive UI
 have not been decided.
 
 ## Current milestone and capability
 
-Phase 1 connects the approved CronyX command bar and Quick Actions to the
-existing orchestrator, agents, permission boundary, tools, result types, and
-event bus. Controlled text such as `Open Chrome`, `Open Microsoft Edge`,
+Phase 3V-B connects the verified local Kokoro runtime to CronyX command
+responses while preserving the approved shell and existing command pipeline.
+The permanent layout is navigation plus the Living Core on the
+left, the selected Core or large Browser workspace in the center, Live Action /
+Activity / implemented Quick Actions on the right, and the existing command
+bar floating over the full-height center workspace. Controlled text such as
+`Open YouTube`, `Open Google`, and `Go to https://example.com` is routed through
+the deterministic interpreter, Orchestrator, Browser Agent, authorized
+embedded-browser tool, and `BrowserController`; it does not open external
+Chrome or Edge.
+
+Existing Phase 1 commands such as `Open Chrome`, `Open Microsoft Edge`,
 `Open Notepad`, `Open Calculator`, `Open File Explorer`, `Open Windows
-Settings`, and `Open https://example.com` is interpreted deterministically and
-routed as a structured command. Text is never passed to a terminal or shell.
+Settings`, plus external-launch abstractions and tests, remain intact. Text is
+never passed to a terminal or shell.
 
 Existing Chrome-profile operations, semantic Invoke and SetValue, UI
 inspection, and window discovery/control remain available.
@@ -42,7 +70,36 @@ options.
 The Core, HUD, Live Action panel, and Activity area now reflect the same real
 command lifecycle: thinking while the request is interpreted, executing after
 the selected tool starts, success or error from the structured result, and
-then idle. Microphone, speech, and voice remain visual-only and unconnected.
+then idle. Successful user-facing command results are synthesized locally with
+the fixed `af_bella` voice. The Core enters `SPEAKING` only after the Windows
+audio backend enters its playing state and returns to idle on native playback
+completion. The microphone remains visual-only and unconnected.
+
+## Local Kokoro speech
+
+CronyX maintains one controlled Node process running the application-owned
+`runtime/kokoro/runtime/node/bridge.mjs` entrypoint. Flutter sends validated
+JSON-line `synthesize` requests; the bridge uses only the local Kokoro-82M
+model, tokenizer, and fixed `af_bella` voice and returns only a WAV path under
+the controlled bridge output directory. The WAV is validated as non-silent
+24 kHz, mono, 32-bit IEEE float audio before `audioplayers` sends it to the
+Windows Media Foundation backend. Generated speech is stored in a
+content-addressed cache whose filenames are SHA-256 hashes of the fixed runtime
+version and response text. Cache hits still pass the same WAV validation. The
+ONNX CPU session uses the measured two-thread sequential configuration for the
+four-logical-core target. No shell, arbitrary script, executable path, voice
+selection, remote model download, or network TTS surface is exposed.
+
+Development diagnostics:
+
+```powershell
+dart run tool/kokoro_bridge_smoke.dart
+flutter run -d windows -t tool/kokoro_audio_playback_smoke.dart
+```
+
+The first command primes/measures the deterministic response cache. The second plays the fixed
+known-good `runtime/kokoro/output/cronyx-af_bella-test.wav` through the same
+Flutter Windows playback adapter used by CronyX.
 
 ## Setup
 
@@ -62,6 +119,14 @@ flutter pub get
 ```powershell
 flutter run -d windows
 ```
+
+Select **Browser** in the existing left navigation, or enter `Open YouTube`,
+`Open Google`, or an absolute HTTP(S) address through the CronyX command bar.
+The browser toolbar supports Back, Forward, Reload, current URL, page title,
+and loading state. Its persistent dedicated profile is stored at
+`%LOCALAPPDATA%\CronyX\Browser\Profile`. Returning to Core disposes the
+interactive WebView2 session; selecting Browser again creates a fresh session
+while reusing that dedicated profile.
 
 ## Manual Chrome launch
 
@@ -210,17 +275,21 @@ flutter build windows
 ## Current limitations
 
 The implemented Windows capabilities are limited to allow-listed application
-launching, validated HTTP(S) URL opening, discovering and launching validated
+launching, validated HTTP(S) navigation in the embedded CronyX Browser,
+discovering and launching validated
 local Chrome profiles,
 top-level window discovery/control, bounded accessibility-tree inspection,
 semantic Invoke, and Value/SetValue. Selection, Toggle, ExpandCollapse, Scroll,
 RangeValue, and Text actions are not executable. There is no
-tab management, in-page website interaction, screenshot/OCR, keyboard/mouse
-automation, terminal execution, process termination, real AI provider, local
+tab management, AI-driven in-page clicking/typing, page extraction,
+screenshot/OCR, keyboard/mouse automation, JavaScript/CDP control, downloads,
+uploads, credential/payment automation, terminal execution, process
+termination, real AI provider, local
 model, voice feature, external integration, persistent/vector memory, or MCP
 networking. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details.
 
-BrowserSession currently stores only the selected Chrome profile. Navigation,
-tabs, page interaction, browser verification beyond safe selected-profile
-metadata, and all later Browser Agent capabilities remain unimplemented.
+`BrowserSession` still stores only the selected external Chrome profile; the
+embedded CronyX Browser instead uses its isolated WebView2 profile. Tabs,
+programmatic page interaction, page reading, downloads/uploads, and credential
+automation remain unimplemented.

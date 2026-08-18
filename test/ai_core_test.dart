@@ -70,6 +70,12 @@ void main() {
 
     expect(find.byType(AiCore), findsOneWidget);
     expect(find.byType(AiCoreRenderer), findsOneWidget);
+    expect(
+      tester
+          .widget<AiCoreRenderer>(find.byType(AiCoreRenderer))
+          .particleDensity,
+      1,
+    );
     expect(find.bySemanticsLabel('Living AI Core thinking'), findsOneWidget);
   });
 

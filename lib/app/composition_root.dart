@@ -1,11 +1,18 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+
 import '../agents/agent.dart';
 import '../agents/browser_agent/browser_agent.dart';
 import '../agents/pc_agent/pc_agent.dart';
+import '../agents/voice_agent/voice_agent.dart';
 import '../ai/model_provider/mock_model_provider.dart';
 import '../ai/model_provider/model_provider.dart';
 import '../browser/browser_session.dart';
 import '../browser/browser_url_launcher.dart';
 import '../browser/windows_browser_url_launcher.dart';
+import '../browser/embedded/browser_controller.dart';
+import '../browser/embedded/windows_webview2_browser_controller.dart';
 import '../browser/chrome/chrome_installation_resolver.dart';
 import '../browser/chrome/chrome_launcher.dart';
 import '../browser/chrome/chrome_profile_registry.dart';
@@ -22,6 +29,8 @@ import '../memory/memory_store.dart';
 import '../skills/skill.dart';
 import '../tools/browser/browser_tool.dart';
 import '../tools/browser/open_url_tool.dart';
+import '../tools/browser/inspect_browser_context_tool.dart';
+import '../tools/browser/embedded_browser_tool.dart';
 import '../tools/files/file_tool.dart';
 import '../tools/terminal/terminal_tool.dart';
 import '../tools/tool.dart';
@@ -41,12 +50,28 @@ import '../tools/windows/invoke_ui_element_tool.dart';
 import '../tools/windows/set_ui_element_value_tool.dart';
 import '../tools/windows/ui_automation/ui_automation.dart';
 import '../tools/windows/ui_automation/windows_ui_automation.dart';
+import '../voice/audio/speech_audio_player.dart';
+import '../voice/audio/windows_speech_audio_player.dart';
+import '../voice/kokoro/kokoro_bridge.dart';
+import '../voice/kokoro/kokoro_speech_synthesizer.dart';
+import '../voice/kokoro/node_kokoro_bridge.dart';
+import '../voice/speech_synthesizer.dart';
+import '../voice/assistant/local_voice_assistant.dart';
+import '../voice/assistant/voice_assistant.dart';
+import '../voice/input/microphone_capture.dart';
+import '../voice/input/record_microphone_capture.dart';
+import '../voice/profile/local_owner_profile_repository.dart';
+import '../voice/profile/owner_profile_repository.dart';
+import '../voice/recognition/local_voice_runtime.dart';
+import '../voice/recognition/sherpa_voice_runtime.dart';
 import 'service_registry.dart';
+import 'local_runtime_root.dart';
 
 final class CompositionRoot {
   const CompositionRoot._();
 
   static ServiceRegistry create({AppConfiguration? configuration}) {
+    final projectRoot = resolveLocalRuntimeRoot();
     final config = configuration ?? AppConfiguration.defaults();
     final events = EventBus();
     final authorizer = AllowListPermissionAuthorizer(config.permissions);
@@ -67,6 +92,11 @@ final class CompositionRoot {
     );
     final openUrlTool = OpenUrlTool(
       launcher: browserUrlLauncher,
+      events: events,
+    );
+    final embeddedBrowserController = WindowsWebView2BrowserController();
+    final embeddedBrowserTool = EmbeddedBrowserTool(
+      controller: embeddedBrowserController,
       events: events,
     );
     final chromeLauncher = WindowsChromeLauncher(
@@ -138,6 +168,11 @@ final class CompositionRoot {
       windowDiscovery: windowDiscovery,
       events: events,
     );
+    final inspectBrowserContextTool = InspectBrowserContextTool(
+      windowDiscovery: windowDiscovery,
+      uiAutomation: uiAutomation,
+      events: events,
+    );
     final tools = <Tool>[
       launchApplicationTool,
       listWindowsTool,
@@ -153,6 +188,8 @@ final class CompositionRoot {
       discoverChromeProfilesTool,
       launchChromeProfileTool,
       openUrlTool,
+      inspectBrowserContextTool,
+      embeddedBrowserTool,
       const FileToolPlaceholder(),
       const BrowserToolPlaceholder(),
       const TerminalToolPlaceholder(),
@@ -177,10 +214,76 @@ final class CompositionRoot {
         discoverChromeProfilesTool: discoverChromeProfilesTool,
         launchChromeProfileTool: launchChromeProfileTool,
         openUrlTool: openUrlTool,
+        inspectBrowserContextTool: inspectBrowserContextTool,
+        embeddedBrowserTool: embeddedBrowserTool,
       ),
     ];
     const provider = MockModelProvider(
       responseText: 'AI OS architecture foundation is ready.',
+    );
+    final kokoroProcessLauncher = FixedNodeKokoroProcessLauncher(
+      projectRoot: projectRoot,
+    );
+    final kokoroBridge = NodeKokoroBridge(
+      launcher: kokoroProcessLauncher,
+      diagnostics: (message) => debugPrint('CRONYX_TTS $message'),
+      allowedOutputDirectory:
+          '$projectRoot${Platform.pathSeparator}runtime'
+          '${Platform.pathSeparator}kokoro${Platform.pathSeparator}output'
+          '${Platform.pathSeparator}bridge',
+    );
+    final speechAudioPlayer = WindowsSpeechAudioPlayer(
+      diagnostics: (message) => debugPrint('CRONYX_TTS $message'),
+    );
+    final speechSynthesizer = KokoroSpeechSynthesizer(
+      bridge: kokoroBridge,
+      audioPlayer: speechAudioPlayer,
+      events: events,
+      diagnostics: (message) => debugPrint('CRONYX_TTS $message'),
+    );
+    final microphone = RecordMicrophoneCapture();
+    final ownerProfiles = LocalOwnerProfileRepository();
+    final voiceRuntime = SherpaVoiceRuntime(
+      paths: VoiceRuntimePaths(projectRoot: projectRoot),
+    );
+    late final Orchestrator orchestrator;
+    final voiceAssistant = LocalVoiceAssistant(
+      microphone: microphone,
+      runtime: voiceRuntime,
+      profiles: ownerProfiles,
+      speech: speechSynthesizer,
+      events: events,
+      commandHandler: (transcript) => orchestrator.handle(transcript),
+      foundationReadiness: () => {
+        'living_core': true,
+        'orchestrator': true,
+        'cronyx_browser': embeddedBrowserController.state.isInitialized,
+        'pc_agent': agents.whereType<PcAgent>().isNotEmpty,
+        'files_subsystem': false,
+        'kokoro_runtime': File(
+          '$projectRoot${Platform.pathSeparator}runtime'
+          '${Platform.pathSeparator}kokoro${Platform.pathSeparator}model'
+          '${Platform.pathSeparator}model_quantized.onnx',
+        ).existsSync(),
+        'af_bella': File(
+          '$projectRoot${Platform.pathSeparator}runtime'
+          '${Platform.pathSeparator}kokoro${Platform.pathSeparator}voices'
+          '${Platform.pathSeparator}af_bella.bin',
+        ).existsSync(),
+      },
+      diagnostics: (message) => debugPrint('CRONYX_VOICE $message'),
+      lifecycleEvents: events.events,
+    );
+    agents.add(VoiceAgent(assistant: voiceAssistant));
+    orchestrator = Orchestrator(
+      modelProvider: provider,
+      events: events,
+      agents: agents,
+      tools: tools,
+      commandInterpreter: DeterministicCommandInterpreter(
+        applicationAliases: applicationAliases,
+        embeddedBrowserEnabled: true,
+      ),
     );
     return ServiceRegistry()
       ..register<AppConfiguration>(config)
@@ -207,25 +310,28 @@ final class CompositionRoot {
       ..register<ChromeLauncher>(chromeLauncher)
       ..register<BrowserSession>(browserSession)
       ..register<BrowserUrlLauncher>(browserUrlLauncher)
+      ..register<BrowserController>(embeddedBrowserController)
+      ..register<WindowsWebView2BrowserController>(embeddedBrowserController)
+      ..register<EmbeddedBrowserTool>(embeddedBrowserTool)
       ..register<OpenUrlTool>(openUrlTool)
+      ..register<InspectBrowserContextTool>(inspectBrowserContextTool)
       ..register<DiscoverChromeProfilesTool>(discoverChromeProfilesTool)
       ..register<LaunchChromeProfileTool>(launchChromeProfileTool)
       ..register<MemoryStore>(InMemoryStore())
       ..register<McpGateway>(const DisabledMcpGateway())
       ..register<Skill>(const PlaceholderSkill())
       ..register<ModelProvider>(provider)
+      ..register<KokoroRuntimeProcessLauncher>(kokoroProcessLauncher)
+      ..register<KokoroBridge>(kokoroBridge)
+      ..register<SpeechAudioPlayer>(speechAudioPlayer)
+      ..register<SpeechSynthesizer>(speechSynthesizer)
+      ..register<MicrophoneCapture>(microphone)
+      ..register<OwnerProfileRepository>(ownerProfiles)
+      ..register<LocalVoiceRuntime>(voiceRuntime)
+      ..register<VoiceAssistant>(voiceAssistant)
       ..register<PcAgent>(agents.whereType<PcAgent>().single)
       ..register<BrowserAgent>(agents.whereType<BrowserAgent>().single)
-      ..register<Orchestrator>(
-        Orchestrator(
-          modelProvider: provider,
-          events: events,
-          agents: agents,
-          tools: tools,
-          commandInterpreter: DeterministicCommandInterpreter(
-            applicationAliases: applicationAliases,
-          ),
-        ),
-      );
+      ..register<VoiceAgent>(agents.whereType<VoiceAgent>().single)
+      ..register<Orchestrator>(orchestrator);
   }
 }

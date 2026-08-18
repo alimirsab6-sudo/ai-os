@@ -95,6 +95,39 @@ final class OpenUrlAgentRequest extends AgentRequest {
   final Uri url;
 }
 
+final class EmbeddedBrowserAgentRequest extends AgentRequest {
+  const EmbeddedBrowserAgentRequest({required this.operation, this.url});
+
+  final String operation;
+  final Uri? url;
+}
+
+final class InspectBrowserContextAgentRequest extends AgentRequest {
+  const InspectBrowserContextAgentRequest({
+    this.windowId,
+    this.maxDepth,
+    this.maxElements,
+  });
+
+  final String? windowId;
+  final int? maxDepth;
+  final int? maxElements;
+}
+
+final class EnrollOwnerVoiceAgentRequest extends AgentRequest {
+  const EnrollOwnerVoiceAgentRequest({required this.displayName});
+
+  final String displayName;
+}
+
+final class ResetOwnerVoiceProfileAgentRequest extends AgentRequest {
+  const ResetOwnerVoiceProfileAgentRequest();
+}
+
+final class DescribeVoiceSecurityActivityAgentRequest extends AgentRequest {
+  const DescribeVoiceSecurityActivityAgentRequest();
+}
+
 final class AgentResponse {
   const AgentResponse({required this.message, this.data = const {}});
 

@@ -1,6 +1,7 @@
 import '../../agents/agent.dart';
 import '../../agents/browser_agent/browser_agent.dart';
 import '../../agents/pc_agent/pc_agent.dart';
+import '../../agents/voice_agent/voice_agent.dart';
 import '../../ai/model_provider/model_provider.dart';
 import '../../tools/tool.dart';
 import '../events/app_event.dart';
@@ -113,6 +114,56 @@ final class OpenUrlCommand extends OrchestratorCommand {
   final Uri url;
 }
 
+final class InitializeBrowserCommand extends OrchestratorCommand {
+  const InitializeBrowserCommand();
+}
+
+sealed class BrowserNavigationCommand extends OrchestratorCommand {
+  const BrowserNavigationCommand();
+}
+
+final class BrowserBackCommand extends BrowserNavigationCommand {
+  const BrowserBackCommand();
+}
+
+final class BrowserForwardCommand extends BrowserNavigationCommand {
+  const BrowserForwardCommand();
+}
+
+final class BrowserReloadCommand extends BrowserNavigationCommand {
+  const BrowserReloadCommand();
+}
+
+final class DisposeBrowserCommand extends OrchestratorCommand {
+  const DisposeBrowserCommand();
+}
+
+final class InspectBrowserContextCommand extends OrchestratorCommand {
+  const InspectBrowserContextCommand({
+    this.windowId,
+    this.maxDepth,
+    this.maxElements,
+  });
+
+  final String? windowId;
+  final int? maxDepth;
+  final int? maxElements;
+}
+
+final class EnrollOwnerVoiceCommand extends OrchestratorCommand {
+  const EnrollOwnerVoiceCommand({required this.displayName});
+
+  final String displayName;
+}
+
+final class ResetOwnerVoiceProfileCommand extends OrchestratorCommand {
+  const ResetOwnerVoiceProfileCommand();
+}
+
+final class DescribeVoiceSecurityActivityCommand extends OrchestratorCommand {
+  const DescribeVoiceSecurityActivityCommand();
+}
+
 abstract interface class CommandInterpreter {
   Result<OrchestratorCommand> interpret(String request);
 }
@@ -122,6 +173,7 @@ abstract interface class CommandInterpreter {
 final class DeterministicCommandInterpreter implements CommandInterpreter {
   const DeterministicCommandInterpreter({
     this.applicationAliases = _defaultApplicationAliases,
+    this.embeddedBrowserEnabled = false,
   });
 
   static const Map<String, String> _defaultApplicationAliases = {
@@ -148,19 +200,70 @@ final class DeterministicCommandInterpreter implements CommandInterpreter {
     'view tasks': 'task_manager',
   };
 
+  static const Map<String, String> _websiteAliases = {
+    'google': 'https://google.com',
+    'youtube': 'https://youtube.com',
+  };
+
   final Map<String, String> applicationAliases;
+  final bool embeddedBrowserEnabled;
 
   @override
   Result<OrchestratorCommand> interpret(String request) {
     var normalized = request.trim().replaceAll(RegExp(r'\s+'), ' ');
-    normalized = normalized.replaceAll(RegExp(r'[.!]+$'), '').trim();
+    normalized = normalized.replaceAll(RegExp(r'[.!?]+$'), '').trim();
     normalized = normalized.replaceFirst(
       RegExp(
-        r'^(?:please|could you please|can you please)\s+',
+        r'^(?:(?:could|can) you(?: please)?|please)\s+',
         caseSensitive: false,
       ),
       '',
     );
+
+    if (const {
+      'inspect browser',
+      'inspect my browser',
+      "what's open in my browser",
+    }.contains(normalized.toLowerCase())) {
+      return const Result.success(InspectBrowserContextCommand());
+    }
+
+    final lower = normalized.toLowerCase();
+    final enrollment = RegExp(
+      r'^enroll (?:my )?voice as (.+)$',
+      caseSensitive: false,
+    ).firstMatch(normalized);
+    if (enrollment != null) {
+      final displayName = enrollment.group(1)!.trim();
+      if (displayName.isEmpty || displayName.length > 40) {
+        return const Result.failure(
+          Failure('Enter a valid owner name.', code: 'invalid_owner_name'),
+        );
+      }
+      return Result.success(EnrollOwnerVoiceCommand(displayName: displayName));
+    }
+    if (lower == 'reset voice profile' || lower == 'reset owner voice') {
+      return const Result.success(ResetOwnerVoiceProfileCommand());
+    }
+    if (lower == 'what happened' || lower == 'what did they do') {
+      return const Result.success(DescribeVoiceSecurityActivityCommand());
+    }
+    final browserInitialization = RegExp(
+      r'^(?:open|show|launch|on)(?: (?:the|a|my))? brows?er$',
+    );
+    if (embeddedBrowserEnabled && browserInitialization.hasMatch(lower)) {
+      return const Result.success(InitializeBrowserCommand());
+    }
+    if (embeddedBrowserEnabled && lower == 'go back') {
+      return const Result.success(BrowserBackCommand());
+    }
+    if (embeddedBrowserEnabled && lower == 'go forward') {
+      return const Result.success(BrowserForwardCommand());
+    }
+    if (embeddedBrowserEnabled &&
+        (lower == 'reload' || lower == 'reload page')) {
+      return const Result.success(BrowserReloadCommand());
+    }
 
     final directApplicationId = _directActionAliases[normalized.toLowerCase()];
     if (directApplicationId != null) {
@@ -177,6 +280,12 @@ final class DeterministicCommandInterpreter implements CommandInterpreter {
 
     final action = actionMatch.group(1)!.toLowerCase();
     final target = actionMatch.group(2)!.trim();
+    final website = embeddedBrowserEnabled
+        ? _websiteAliases[target.toLowerCase()]
+        : null;
+    if (website != null) {
+      return Result.success(OpenUrlCommand(url: Uri.parse(website)));
+    }
     final applicationId =
         action == 'open' || action == 'launch' || action == 'start'
         ? applicationAliases[target.toLowerCase()]
@@ -409,12 +518,79 @@ final class Orchestrator {
             data: {'host': url.host},
           ),
         );
+      case InitializeBrowserCommand():
+        agentRequest = const EmbeddedBrowserAgentRequest(
+          operation: 'initialize',
+        );
+        _publishBrowserCommandRequested('initialize');
+      case BrowserBackCommand():
+        agentRequest = const EmbeddedBrowserAgentRequest(operation: 'back');
+        _publishBrowserCommandRequested('back');
+      case BrowserForwardCommand():
+        agentRequest = const EmbeddedBrowserAgentRequest(operation: 'forward');
+        _publishBrowserCommandRequested('forward');
+      case BrowserReloadCommand():
+        agentRequest = const EmbeddedBrowserAgentRequest(operation: 'reload');
+        _publishBrowserCommandRequested('reload');
+      case DisposeBrowserCommand():
+        agentRequest = const EmbeddedBrowserAgentRequest(operation: 'dispose');
+        _publishBrowserCommandRequested('dispose');
+      case InspectBrowserContextCommand(
+        :final windowId,
+        :final maxDepth,
+        :final maxElements,
+      ):
+        agentRequest = InspectBrowserContextAgentRequest(
+          windowId: windowId,
+          maxDepth: maxDepth,
+          maxElements: maxElements,
+        );
+        events.publish(
+          ApplicationEvent(
+            type: 'browser.context.inspection.requested',
+            occurredAt: DateTime.now().toUtc(),
+            data: {
+              'window_id': windowId,
+              'max_depth': maxDepth,
+              'max_elements': maxElements,
+            },
+          ),
+        );
+      case EnrollOwnerVoiceCommand(:final displayName):
+        agentRequest = EnrollOwnerVoiceAgentRequest(displayName: displayName);
+        events.publish(
+          ApplicationEvent(
+            type: 'voice.enrollment.requested',
+            occurredAt: DateTime.now().toUtc(),
+          ),
+        );
+      case ResetOwnerVoiceProfileCommand():
+        agentRequest = const ResetOwnerVoiceProfileAgentRequest();
+        events.publish(
+          ApplicationEvent(
+            type: 'voice.profile.reset.requested',
+            occurredAt: DateTime.now().toUtc(),
+          ),
+        );
+      case DescribeVoiceSecurityActivityCommand():
+        agentRequest = const DescribeVoiceSecurityActivityAgentRequest();
+        events.publish(
+          ApplicationEvent(
+            type: 'voice.security.activity.requested',
+            occurredAt: DateTime.now().toUtc(),
+          ),
+        );
     }
 
     final Agent? targetAgent = switch (agentRequest) {
       DiscoverChromeProfilesAgentRequest() ||
       LaunchChromeProfileAgentRequest() ||
       OpenUrlAgentRequest() => _findBrowserAgent(),
+      EmbeddedBrowserAgentRequest() => _findBrowserAgent(),
+      InspectBrowserContextAgentRequest() => _findBrowserAgent(),
+      EnrollOwnerVoiceAgentRequest() ||
+      ResetOwnerVoiceProfileAgentRequest() ||
+      DescribeVoiceSecurityActivityAgentRequest() => _findVoiceAgent(),
       _ => _findPcAgent(),
     };
     if (targetAgent == null) {
@@ -452,6 +628,16 @@ final class Orchestrator {
     );
   }
 
+  void _publishBrowserCommandRequested(String operation) {
+    events.publish(
+      ApplicationEvent(
+        type: 'browser.command.requested',
+        occurredAt: DateTime.now().toUtc(),
+        data: {'operation': operation},
+      ),
+    );
+  }
+
   PcAgent? _findPcAgent() {
     for (final agent in agents) {
       if (agent is PcAgent) {
@@ -468,6 +654,13 @@ final class Orchestrator {
     return null;
   }
 
+  VoiceAgent? _findVoiceAgent() {
+    for (final agent in agents) {
+      if (agent is VoiceAgent) return agent;
+    }
+    return null;
+  }
+
   Map<String, Object?> _commandSelectionData(OrchestratorCommand command) =>
       switch (command) {
         LaunchApplicationCommand(:final applicationId) => {
@@ -479,6 +672,42 @@ final class Orchestrator {
           'action': 'open_url',
           'agent': 'Browser Agent',
           'host': url.host,
+        },
+        InitializeBrowserCommand() => {
+          'action': 'initialize_browser',
+          'agent': 'Browser Agent',
+        },
+        BrowserBackCommand() => {
+          'action': 'browser_back',
+          'agent': 'Browser Agent',
+        },
+        BrowserForwardCommand() => {
+          'action': 'browser_forward',
+          'agent': 'Browser Agent',
+        },
+        BrowserReloadCommand() => {
+          'action': 'browser_reload',
+          'agent': 'Browser Agent',
+        },
+        DisposeBrowserCommand() => {
+          'action': 'dispose_browser',
+          'agent': 'Browser Agent',
+        },
+        InspectBrowserContextCommand() => {
+          'action': 'inspect_browser_context',
+          'agent': 'Browser Agent',
+        },
+        EnrollOwnerVoiceCommand() => {
+          'action': 'enroll_owner_voice',
+          'agent': 'Voice Agent',
+        },
+        ResetOwnerVoiceProfileCommand() => {
+          'action': 'reset_owner_voice',
+          'agent': 'Voice Agent',
+        },
+        DescribeVoiceSecurityActivityCommand() => {
+          'action': 'describe_voice_security_activity',
+          'agent': 'Voice Agent',
         },
         _ => {'action': command.runtimeType.toString()},
       };

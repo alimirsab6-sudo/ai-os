@@ -7,21 +7,33 @@ import 'package:flutter/material.dart';
 import '../../core/events/app_event.dart';
 import '../../core/orchestrator/orchestrator.dart';
 import '../../core/result.dart';
+import '../../browser/embedded/browser_controller.dart';
+import '../browser/cronyx_browser_workspace.dart';
 import '../world/ai_core/ai_core.dart';
 import '../world/ai_core/ai_core_controller.dart';
 import '../world/ai_core/ai_core_state.dart';
+import '../../voice/speech_synthesizer.dart';
+import '../../voice/assistant/voice_assistant.dart';
 
 class CronyxOsShell extends StatefulWidget {
   const CronyxOsShell({
     required this.orchestrator,
     this.coreController,
     this.onCoreStateChanged,
+    this.browserController,
+    this.browserSurfaceBuilder,
+    this.speechSynthesizer,
+    this.voiceAssistant,
     super.key,
   });
 
   final Orchestrator orchestrator;
   final AiCoreController? coreController;
   final ValueChanged<AiCoreState>? onCoreStateChanged;
+  final BrowserController? browserController;
+  final BrowserSurfaceBuilder? browserSurfaceBuilder;
+  final SpeechSynthesizer? speechSynthesizer;
+  final VoiceAssistant? voiceAssistant;
 
   @override
   State<CronyxOsShell> createState() => _CronyxOsShellState();
@@ -44,8 +56,10 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
     _ActionStep('Waiting for input', _ActionStepStatus.pending),
   ];
   bool _busy = false;
+  Future<void>? _browserSessionTransition;
   Timer? _idleTimer;
   String _activeTarget = 'requested action';
+  _Workspace _workspace = _Workspace.core;
 
   @override
   void initState() {
@@ -55,6 +69,12 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
     _eventSubscription = widget.orchestrator.eventStream?.listen(
       _handleBackendEvent,
     );
+    final speechSynthesizer = widget.speechSynthesizer;
+    if (speechSynthesizer != null) {
+      unawaited(speechSynthesizer.initialize());
+    }
+    final voiceAssistant = widget.voiceAssistant;
+    if (voiceAssistant != null) unawaited(voiceAssistant.initialize());
   }
 
   @override
@@ -63,11 +83,23 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
     _eventSubscription?.cancel();
     _commandController.dispose();
     _commandFocus.dispose();
+    final speechSynthesizer = widget.speechSynthesizer;
+    if (speechSynthesizer != null) {
+      unawaited(speechSynthesizer.dispose());
+    }
+    final voiceAssistant = widget.voiceAssistant;
+    if (voiceAssistant != null) unawaited(voiceAssistant.dispose());
+    if (widget.browserController?.state.isInitialized ?? false) {
+      unawaited(
+        widget.orchestrator.executeCommand(const DisposeBrowserCommand()),
+      );
+    }
     if (_ownsCoreController) _coreController.dispose();
     super.dispose();
   }
 
   Future<void> _submitCommand([String? value]) async {
+    await _browserSessionTransition;
     if (_busy) return;
     final command = (value ?? _commandController.text).trim();
     if (command.isEmpty) {
@@ -102,11 +134,13 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
       await result.fold<Future<void>>(
         (response) async {
           if (!mounted) return;
-          _finishSuccess(
-            title: response.message.isEmpty
-                ? 'Completed successfully'
-                : response.message,
-          );
+          if (response.data['awaiting_page_load'] != true) {
+            _finishSuccess(
+              title: response.message.isEmpty
+                  ? 'Completed successfully'
+                  : response.message,
+            );
+          }
         },
         (failure) async {
           if (!mounted) return;
@@ -125,7 +159,26 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
   }
 
   void _handleBackendEvent(AppEvent event) {
-    if (!_busy || event is! ApplicationEvent || !mounted) return;
+    if (event is! ApplicationEvent || !mounted) return;
+    if (_handleVoiceEvent(event)) return;
+    if (_handleSpeechEvent(event)) return;
+    if (event.type == 'browser.disposed') {
+      if (_busy) {
+        _idleTimer?.cancel();
+        _setState(
+          AiCoreState.idle,
+          title: 'Waiting for your request',
+          agent: 'Assistant Core',
+          progress: 0,
+          steps: const [
+            _ActionStep('Waiting for input', _ActionStepStatus.pending),
+          ],
+        );
+        _busy = false;
+      }
+      return;
+    }
+    if (!_busy) return;
     if (event.type == 'orchestrator.command.selected') {
       final applicationId = event.data['application_id'];
       final host = event.data['host'];
@@ -134,6 +187,10 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
           : host is String
           ? host
           : 'requested action';
+      final action = event.data['action'];
+      if (action == 'open_url' || action == 'initialize_browser') {
+        _workspace = _Workspace.browser;
+      }
       _setState(
         AiCoreState.thinking,
         title: 'Request understood',
@@ -147,8 +204,76 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
       );
       return;
     }
+    if (event.type == 'browser.navigation.requested') {
+      final host = event.data['host'];
+      _activeTarget = host is String ? host : 'current page';
+      _setState(
+        AiCoreState.thinking,
+        title: 'Preparing browser navigation',
+        agent: 'Browser Agent',
+        progress: .38,
+        steps: const [
+          _ActionStep('Validate address', _ActionStepStatus.complete),
+          _ActionStep('Authorize navigation', _ActionStepStatus.active),
+          _ActionStep('Load page', _ActionStepStatus.pending),
+        ],
+      );
+      return;
+    }
+    if (event.type == 'browser.created') {
+      _activity.insert(
+        0,
+        _ActivityItem('Browser created', 'Browser Agent', 'Now'),
+      );
+      return;
+    }
+    if (event.type == 'browser.ready') {
+      _activity.insert(
+        0,
+        _ActivityItem('Browser initialized', 'Browser Agent', 'Now'),
+      );
+      return;
+    }
+    if (event.type == 'browser.navigation.started') {
+      _activity.insert(
+        0,
+        _ActivityItem('Opening $_activeTarget', 'Browser Agent', 'Now'),
+      );
+      _setState(
+        AiCoreState.executing,
+        title: 'Opening $_activeTarget',
+        agent: 'Browser Agent',
+        progress: .72,
+        steps: const [
+          _ActionStep('Validate address', _ActionStepStatus.complete),
+          _ActionStep('Authorize navigation', _ActionStepStatus.complete),
+          _ActionStep('Load page', _ActionStepStatus.active),
+        ],
+      );
+      return;
+    }
+    if (event.type == 'browser.navigation.completed') {
+      final title = event.data['title'];
+      final message = title is String && title.trim().isNotEmpty
+          ? '${title.trim()} loaded'
+          : '$_activeTarget loaded';
+      _finishSuccess(title: message);
+      return;
+    }
+    if (event.type == 'browser.navigation.failed') {
+      _finishFailure(
+        Failure(
+          'The page could not be loaded.',
+          code:
+              event.data['failure_code'] as String? ??
+              'browser_navigation_failed',
+        ),
+      );
+      return;
+    }
     if (event.type == 'tool.started') {
       final toolId = event.data['tool_id'];
+      if (toolId == 'browser.embedded.control') return;
       final actionTitle = toolId == 'browser.open_url'
           ? 'Opening web address'
           : 'Opening $_activeTarget';
@@ -168,6 +293,59 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
     }
   }
 
+  bool _handleVoiceEvent(ApplicationEvent event) {
+    if (!event.type.startsWith('voice.')) return false;
+    switch (event.type) {
+      case 'voice.wake.detected':
+      case 'voice.listening.started':
+        _idleTimer?.cancel();
+        _busy = true;
+        _setState(
+          AiCoreState.listening,
+          title: 'Listening for your request',
+          agent: 'CronyX Voice',
+          progress: .1,
+          steps: const [_ActionStep('Listening', _ActionStepStatus.active)],
+        );
+      case 'voice.verification.started':
+        _busy = true;
+        _setState(
+          AiCoreState.thinking,
+          title: 'Recognizing your voice',
+          agent: 'CronyX Voice',
+          progress: .3,
+          steps: const [
+            _ActionStep('Verify speaker', _ActionStepStatus.active),
+          ],
+        );
+      case 'voice.thinking':
+      case 'voice.transcript.ready':
+        _busy = true;
+        _setState(
+          AiCoreState.thinking,
+          title: 'Understanding your request',
+          agent: 'AI Orchestrator',
+          progress: .4,
+          steps: const [
+            _ActionStep('Understand request', _ActionStepStatus.active),
+          ],
+        );
+      case 'voice.access.locked':
+        _setState(
+          AiCoreState.error,
+          title: 'Voice access remains locked',
+          agent: 'CronyX Voice',
+          progress: .2,
+          steps: const [
+            _ActionStep('Speaker not verified', _ActionStepStatus.error),
+          ],
+        );
+      default:
+        // Remaining voice events are non-visual lifecycle/security telemetry.
+    }
+    return true;
+  }
+
   void _finishSuccess({String title = 'Completed successfully'}) {
     if (!mounted) return;
     _setState(
@@ -183,7 +361,52 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
       ],
     );
     _activity.insert(0, _ActivityItem(title, 'System', 'Now'));
-    _scheduleIdle();
+    final speechSynthesizer = widget.speechSynthesizer;
+    if (speechSynthesizer == null) {
+      _scheduleIdle();
+    } else {
+      final resultToTts = Stopwatch()..start();
+      unawaited(speechSynthesizer.speak(title));
+      debugPrint(
+        '[TTS] command_result_to_request '
+        '${resultToTts.elapsedMicroseconds / 1000} ms',
+      );
+    }
+  }
+
+  bool _handleSpeechEvent(ApplicationEvent event) {
+    if (!event.type.startsWith('tts.')) return false;
+    if (event.type == 'tts.playback.started') {
+      _idleTimer?.cancel();
+      _busy = true;
+      _setState(
+        AiCoreState.speaking,
+        title: _actionTitle,
+        agent: 'CronyX Voice',
+        progress: 1,
+        steps: const [
+          _ActionStep('Action completed', _ActionStepStatus.complete),
+          _ActionStep('Speaking response', _ActionStepStatus.active),
+        ],
+      );
+      return true;
+    }
+    if (event.type == 'tts.playback.completed' ||
+        event.type == 'tts.playback.stopped' ||
+        event.type == 'tts.failed') {
+      if (_busy || _coreController.state == AiCoreState.speaking) {
+        if (event.type == 'tts.failed') {
+          _activity.insert(
+            0,
+            _ActivityItem('Voice response unavailable', 'CronyX Voice', 'Now'),
+          );
+        }
+        _returnToIdle();
+      }
+      return true;
+    }
+    // Initialization, generation, and disposal are internal lifecycle events.
+    return true;
   }
 
   void _finishFailure(Failure failure) {
@@ -227,14 +450,125 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
     });
   }
 
+  void _returnToIdle() {
+    if (!mounted) return;
+    _idleTimer?.cancel();
+    _setState(
+      AiCoreState.idle,
+      title: 'Waiting for your request',
+      agent: 'Assistant Core',
+      progress: 0,
+      steps: const [
+        _ActionStep('Waiting for input', _ActionStepStatus.pending),
+      ],
+    );
+    _busy = false;
+    _commandFocus.requestFocus();
+  }
+
   void _runQuickAction(String label) {
     if (_busy) return;
     _commandController.text = label;
     _submitCommand(label);
   }
 
+  Future<void> _selectWorkspace(_Workspace workspace) async {
+    await _browserSessionTransition;
+    final previous = _workspace;
+    if (previous != workspace) setState(() => _workspace = workspace);
+    if (previous == _Workspace.browser && workspace == _Workspace.core) {
+      if (widget.browserController?.state.isInitialized ?? false) {
+        if (mounted) setState(() => _busy = true);
+        final transition = _disposeBrowserSession();
+        _browserSessionTransition = transition;
+        await transition;
+        if (identical(_browserSessionTransition, transition)) {
+          _browserSessionTransition = null;
+        }
+      }
+      return;
+    }
+    if (workspace == _Workspace.browser &&
+        widget.browserController != null &&
+        !widget.browserController!.state.isInitialized &&
+        !_busy) {
+      await _executeBrowserCommand(
+        const InitializeBrowserCommand(),
+        target: 'CronyX Browser',
+      );
+    }
+  }
+
+  Future<void> _disposeBrowserSession() async {
+    final result = await widget.orchestrator.executeCommand(
+      const DisposeBrowserCommand(),
+    );
+    if (!mounted) return;
+    result.fold((_) => setState(() => _busy = false), (failure) {
+      _busy = false;
+      _finishFailure(failure);
+    });
+  }
+
+  Future<void> _executeBrowserCommand(
+    OrchestratorCommand command, {
+    required String target,
+  }) async {
+    if (_busy) return;
+    _idleTimer?.cancel();
+    setState(() {
+      _busy = true;
+      _activeTarget = target;
+    });
+    _setState(
+      AiCoreState.thinking,
+      title: 'Preparing browser action',
+      agent: 'Browser Agent',
+      progress: .2,
+      steps: const [
+        _ActionStep('Prepare action', _ActionStepStatus.active),
+        _ActionStep('Execute action', _ActionStepStatus.pending),
+      ],
+    );
+    final result = await widget.orchestrator.executeCommand(command);
+    if (!mounted) return;
+    result.fold((response) {
+      if (response.data['awaiting_page_load'] != true) {
+        _finishSuccess(title: response.message);
+      }
+    }, _finishFailure);
+  }
+
+  Future<void> _navigateBrowser(Uri url) =>
+      _executeBrowserCommand(OpenUrlCommand(url: url), target: url.host);
+
+  Future<void> _browserBack() => _executeBrowserCommand(
+    const BrowserBackCommand(),
+    target: 'previous page',
+  );
+
+  Future<void> _browserForward() => _executeBrowserCommand(
+    const BrowserForwardCommand(),
+    target: 'next page',
+  );
+
+  Future<void> _browserReload() => _executeBrowserCommand(
+    const BrowserReloadCommand(),
+    target: 'current page',
+  );
+
   void _toggleListening() {
     if (_busy) return;
+    final voiceAssistant = widget.voiceAssistant;
+    if (voiceAssistant != null) {
+      if (voiceAssistant.wakeMonitoring) {
+        unawaited(voiceAssistant.stopListening());
+        _returnToIdle();
+      } else {
+        unawaited(voiceAssistant.startWakeMonitoring());
+      }
+      return;
+    }
     if (_coreController.state == AiCoreState.listening) {
       _setState(
         AiCoreState.idle,
@@ -307,9 +641,30 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
 
                     return Row(
                       children: [
-                        SizedBox(width: leftWidth, child: const _Sidebar()),
+                        SizedBox(
+                          width: leftWidth,
+                          child: _Sidebar(
+                            selected: _workspace,
+                            controller: _coreController,
+                            activeAgent: _actionAgent,
+                            onSelect: _selectWorkspace,
+                          ),
+                        ),
                         Expanded(
-                          child: _CoreWorkspace(controller: _coreController),
+                          child: Stack(
+                            children: [
+                              Positioned.fill(child: _buildWorkspace()),
+                              Positioned(
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                child: _CommandBar(
+                                  controller: _coreController,
+                                  compact: constraints.maxHeight < 700,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                         SizedBox(
                           width: rightWidth,
@@ -322,6 +677,9 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
                             steps: _steps,
                             activity: _activity,
                             onQuickAction: _runQuickAction,
+                            browserMode: _workspace == _Workspace.browser,
+                            onBrowserBack: _browserBack,
+                            onBrowserReload: _browserReload,
                           ),
                         ),
                       ],
@@ -335,7 +693,44 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
       ),
     ),
   );
+
+  Widget _buildWorkspace() {
+    if (_workspace == _Workspace.core) {
+      return _CoreWorkspace(controller: _coreController);
+    }
+    final browserController = widget.browserController;
+    final surfaceBuilder = widget.browserSurfaceBuilder;
+    if (browserController == null || surfaceBuilder == null) {
+      return const Center(
+        child: Text(
+          'CronyX Browser is unavailable.',
+          style: _Styles.mutedSmall,
+        ),
+      );
+    }
+    return CronyxBrowserWorkspace(
+      controller: browserController,
+      surfaceBuilder: surfaceBuilder,
+      palette: const CronyxBrowserPalette(
+        background: _CronyxColors.background,
+        panel: Color(0xD9080C12),
+        border: _CronyxColors.border,
+        borderStrong: _CronyxColors.borderStrong,
+        primary: Color(0xFFE9F4FF),
+        secondary: Color(0xFF9BAFBD),
+        muted: _CronyxColors.muted,
+        accent: _CronyxColors.cyan,
+        error: _CronyxColors.error,
+      ),
+      onNavigate: _navigateBrowser,
+      onBack: _browserBack,
+      onForward: _browserForward,
+      onReload: _browserReload,
+    );
+  }
 }
+
+enum _Workspace { core, browser }
 
 class _CronyxAtmosphere extends StatelessWidget {
   const _CronyxAtmosphere();
@@ -527,7 +922,17 @@ class _TopBarState extends State<_TopBar> {
 }
 
 class _Sidebar extends StatelessWidget {
-  const _Sidebar();
+  const _Sidebar({
+    required this.selected,
+    required this.controller,
+    required this.activeAgent,
+    required this.onSelect,
+  });
+
+  final _Workspace selected;
+  final AiCoreController controller;
+  final String activeAgent;
+  final ValueChanged<_Workspace> onSelect;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -557,8 +962,9 @@ class _Sidebar extends StatelessWidget {
                     glyph: _HtmlGlyph.core,
                     title: 'Core',
                     subtitle: 'AI Brain',
-                    selected: true,
+                    selected: selected == _Workspace.core,
                     compact: compact,
+                    onTap: () => onSelect(_Workspace.core),
                   ),
                   SizedBox(height: navGap),
                   _NavItem(
@@ -566,6 +972,8 @@ class _Sidebar extends StatelessWidget {
                     title: 'Browser',
                     subtitle: 'Web Agent',
                     compact: compact,
+                    selected: selected == _Workspace.browser,
+                    onTap: () => onSelect(_Workspace.browser),
                   ),
                   SizedBox(height: navGap),
                   _NavItem(
@@ -613,7 +1021,11 @@ class _Sidebar extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            _SidebarStatus(compact: compact),
+            _LivingCoreSidebar(
+              controller: controller,
+              activeAgent: activeAgent,
+              compact: constraints.maxHeight < 760,
+            ),
           ],
         );
       },
@@ -621,6 +1033,73 @@ class _Sidebar extends StatelessWidget {
   );
 }
 
+class _LivingCoreSidebar extends StatelessWidget {
+  const _LivingCoreSidebar({
+    required this.controller,
+    required this.activeAgent,
+    required this.compact,
+  });
+
+  final AiCoreController controller;
+  final String activeAgent;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('living-core-sidebar'),
+    padding: EdgeInsets.fromLTRB(10, compact ? 4 : 10, 10, compact ? 4 : 10),
+    decoration: BoxDecoration(
+      color: const Color(0x05FFFFFF),
+      border: Border.all(color: _CronyxColors.border),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('LIVING CORE', style: _Styles.section),
+          Center(
+            child: SizedBox.square(
+              dimension: compact ? 128 : 150,
+              child: AiCore(
+                controller: controller,
+                animationEnabled: true,
+                particleDensity: .2,
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              _StatusDot(active: controller.state != AiCoreState.idle),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  controller.state.name.toUpperCase(),
+                  key: const Key('living-core-state'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _Styles.panelState,
+                ),
+              ),
+            ],
+          ),
+          if (!compact) const SizedBox(height: 3),
+          Text(
+            activeAgent,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: _Styles.mutedTiny,
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// Preserved from the approved shell for a future non-browser status surface.
+// ignore: unused_element
 class _SidebarStatus extends StatelessWidget {
   const _SidebarStatus({required this.compact});
   final bool compact;
@@ -1045,6 +1524,7 @@ class _NavItem extends StatelessWidget {
     required this.subtitle,
     this.selected = false,
     this.compact = false,
+    this.onTap,
   });
 
   final _HtmlGlyph glyph;
@@ -1052,79 +1532,85 @@ class _NavItem extends StatelessWidget {
   final String subtitle;
   final bool selected;
   final bool compact;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: 52,
-    decoration: BoxDecoration(
-      color: selected ? _CronyxColors.selected : Colors.transparent,
-      border: Border.all(
-        color: selected
-            ? _CronyxColors.cyan.withValues(alpha: .38)
-            : Colors.transparent,
+  Widget build(BuildContext context) => InkWell(
+    key: Key('nav-${title.toLowerCase()}'),
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(9),
+    child: Container(
+      height: 52,
+      decoration: BoxDecoration(
+        color: selected ? _CronyxColors.selected : Colors.transparent,
+        border: Border.all(
+          color: selected
+              ? _CronyxColors.cyan.withValues(alpha: .38)
+              : Colors.transparent,
+        ),
+        borderRadius: BorderRadius.circular(9),
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: _CronyxColors.cyan.withValues(alpha: .08),
+                  blurRadius: 14,
+                ),
+              ]
+            : const [],
       ),
-      borderRadius: BorderRadius.circular(9),
-      boxShadow: selected
-          ? [
-              BoxShadow(
-                color: _CronyxColors.cyan.withValues(alpha: .08),
-                blurRadius: 14,
-              ),
-            ]
-          : const [],
-    ),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: selected
-                    ? _CronyxColors.cyan.withValues(alpha: .4)
-                    : _CronyxColors.border,
-              ),
-              boxShadow: selected
-                  ? [
-                      BoxShadow(
-                        color: _CronyxColors.cyan.withValues(alpha: .12),
-                        blurRadius: 10,
-                      ),
-                    ]
-                  : const [],
-            ),
-            child: _LineGlyph(
-              glyph,
-              color: selected ? _CronyxColors.cyan : _CronyxColors.muted,
-              size: 14,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: selected ? _Styles.navActive : _Styles.nav,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: selected
+                      ? _CronyxColors.cyan.withValues(alpha: .4)
+                      : _CronyxColors.border,
                 ),
-                const SizedBox(height: 1),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _Styles.navSub,
-                ),
-              ],
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: _CronyxColors.cyan.withValues(alpha: .12),
+                          blurRadius: 10,
+                        ),
+                      ]
+                    : const [],
+              ),
+              child: _LineGlyph(
+                glyph,
+                color: selected ? _CronyxColors.cyan : _CronyxColors.muted,
+                size: 14,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: selected ? _Styles.navActive : _Styles.nav,
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _Styles.navSub,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -1151,8 +1637,10 @@ class _CoreWorkspace extends StatelessWidget {
               ],
             ),
           ),
-          _CoreStatus(controller: controller, compact: compact),
-          _CommandBar(controller: controller, compact: compact),
+          Transform.translate(
+            offset: Offset(0, compact ? -96 : -82),
+            child: _CoreStatus(controller: controller, compact: compact),
+          ),
         ],
       );
     },
@@ -1373,7 +1861,11 @@ class _CoreStatus extends StatelessWidget {
             style: _Styles.state.copyWith(color: color),
           ),
           const SizedBox(height: 6),
-          const Text('How can I assist you today?', style: _Styles.prompt),
+          const Text(
+            'How can I assist you today?',
+            key: Key('core-prompt'),
+            style: _Styles.prompt,
+          ),
         ],
       ),
     );
@@ -1412,7 +1904,7 @@ class _WaveBarsState extends State<_WaveBars>
     height: 14,
     child: AnimatedBuilder(
       animation: _controller,
-      builder: (_, __) => Row(
+      builder: (_, _) => Row(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: List.generate(5, (i) {
@@ -1483,9 +1975,7 @@ class _CommandBar extends StatelessWidget {
                         children: [
                           InkWell(
                             borderRadius: BorderRadius.circular(30),
-                            onTap: shell == null
-                                ? null
-                                : shell._toggleListening,
+                            onTap: shell?._toggleListening,
                             child: Container(
                               width: 50,
                               height: 50,
@@ -1556,7 +2046,7 @@ class _CommandBar extends StatelessWidget {
                           InkWell(
                             key: const Key('command-send'),
                             borderRadius: BorderRadius.circular(30),
-                            onTap: shell == null ? null : shell._submitCommand,
+                            onTap: shell?._submitCommand,
                             child: Container(
                               width: 50,
                               height: 50,
@@ -1614,6 +2104,9 @@ class _RightPanel extends StatelessWidget {
     required this.steps,
     required this.activity,
     required this.onQuickAction,
+    required this.browserMode,
+    required this.onBrowserBack,
+    required this.onBrowserReload,
   });
 
   final String actionState;
@@ -1623,6 +2116,9 @@ class _RightPanel extends StatelessWidget {
   final List<_ActionStep> steps;
   final List<_ActivityItem> activity;
   final ValueChanged<String> onQuickAction;
+  final bool browserMode;
+  final Future<void> Function() onBrowserBack;
+  final Future<void> Function() onBrowserReload;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -1719,67 +2215,51 @@ class _RightPanel extends StatelessWidget {
         const _SectionLabel('QUICK ACTIONS'),
         const SizedBox(height: 9),
         Column(
-          children: [
-            _QuickAction(
-              label: 'Open Browser',
-              subtitle: 'Web Agent',
-              glyph: _HtmlGlyph.globe,
-              onTap: () => onQuickAction('Open Browser'),
-            ),
-            const SizedBox(height: 8),
-            _QuickAction(
-              label: 'Open My PC',
-              subtitle: 'System Access',
-              glyph: _HtmlGlyph.pc,
-              onTap: () => onQuickAction('Open My PC'),
-            ),
-            const SizedBox(height: 8),
-            _QuickAction(
-              label: 'Browse Files',
-              subtitle: 'File Manager',
-              glyph: _HtmlGlyph.folder,
-              onTap: () => onQuickAction('Browse Files'),
-            ),
-            const SizedBox(height: 8),
-            _QuickAction(
-              label: 'View Tasks',
-              subtitle: 'Task Manager',
-              glyph: _HtmlGlyph.tasks,
-              onTap: () => onQuickAction('View Tasks'),
-            ),
-            const SizedBox(height: 8),
-            _QuickAction(
-              label: 'Run Command',
-              subtitle: 'Terminal',
-              glyph: _HtmlGlyph.terminal,
-              onTap: () => onQuickAction('Run Command'),
-            ),
-            const SizedBox(height: 8),
-            _QuickAction(
-              label: 'Add Agent',
-              subtitle: 'New Agent',
-              glyph: _HtmlGlyph.addAgent,
-              onTap: () => onQuickAction('Add Agent'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: const [
-            Expanded(
-              child: _SystemMetric('NETWORK', '↑ 12.4 KB/s\n↓ 8.7 KB/s'),
-            ),
-            SizedBox(width: 7),
-            Expanded(child: _SystemMetric('CPU', '14%')),
-          ],
-        ),
-        const SizedBox(height: 7),
-        Row(
-          children: const [
-            Expanded(child: _SystemMetric('TEMP', '41°C')),
-            SizedBox(width: 7),
-            Expanded(child: _SystemMetric('SECURITY', 'Protected')),
-          ],
+          children: browserMode
+              ? [
+                  _QuickAction(
+                    label: 'Go Back',
+                    subtitle: 'Browser History',
+                    glyph: _HtmlGlyph.globe,
+                    onTap: () => unawaited(onBrowserBack()),
+                  ),
+                  const SizedBox(height: 8),
+                  _QuickAction(
+                    label: 'Reload',
+                    subtitle: 'Current Page',
+                    glyph: _HtmlGlyph.globe,
+                    onTap: () => unawaited(onBrowserReload()),
+                  ),
+                ]
+              : [
+                  _QuickAction(
+                    label: 'Open Browser',
+                    subtitle: 'Web Agent',
+                    glyph: _HtmlGlyph.globe,
+                    onTap: () => onQuickAction('Open Browser'),
+                  ),
+                  const SizedBox(height: 8),
+                  _QuickAction(
+                    label: 'Open My PC',
+                    subtitle: 'System Access',
+                    glyph: _HtmlGlyph.pc,
+                    onTap: () => onQuickAction('Open My PC'),
+                  ),
+                  const SizedBox(height: 8),
+                  _QuickAction(
+                    label: 'Browse Files',
+                    subtitle: 'File Manager',
+                    glyph: _HtmlGlyph.folder,
+                    onTap: () => onQuickAction('Browse Files'),
+                  ),
+                  const SizedBox(height: 8),
+                  _QuickAction(
+                    label: 'View Tasks',
+                    subtitle: 'Task Manager',
+                    glyph: _HtmlGlyph.tasks,
+                    onTap: () => onQuickAction('View Tasks'),
+                  ),
+                ],
         ),
       ],
     ),
@@ -2023,6 +2503,8 @@ class _QuickAction extends StatelessWidget {
   }
 }
 
+// Preserved from the approved shell for a future dedicated system workspace.
+// ignore: unused_element
 class _SystemMetric extends StatelessWidget {
   const _SystemMetric(this.label, this.value);
   final String label;
@@ -2109,10 +2591,11 @@ class _MetricSparkPainter extends CustomPainter {
     for (var i = 0; i < points.length; i++) {
       final x = size.width * i / (points.length - 1);
       final y = points[i];
-      if (i == 0)
+      if (i == 0) {
         path.moveTo(x, y);
-      else
+      } else {
         path.lineTo(x, y);
+      }
     }
     canvas.drawPath(
       path,
@@ -2128,43 +2611,6 @@ class _MetricSparkPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _MetricSparkPainter oldDelegate) =>
       oldDelegate.amber != amber;
-}
-
-class _Metric extends StatelessWidget {
-  const _Metric({
-    required this.label,
-    required this.value,
-    required this.progress,
-    this.compact = false,
-  });
-  final String label;
-  final String value;
-  final double progress;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: _Styles.mutedTiny),
-          Text(value, style: _Styles.mutedTiny),
-        ],
-      ),
-      SizedBox(height: compact ? 4 : 6),
-      ClipRRect(
-        borderRadius: BorderRadius.circular(2),
-        child: LinearProgressIndicator(
-          value: progress,
-          minHeight: 2,
-          backgroundColor: _CronyxColors.track,
-          valueColor: const AlwaysStoppedAnimation(_CronyxColors.cyan),
-        ),
-      ),
-    ],
-  );
 }
 
 class _SectionLabel extends StatelessWidget {
@@ -2222,8 +2668,6 @@ enum _ActionStepStatus { pending, active, complete, error }
 
 class _CronyxColors {
   static const background = Color(0xFF030507);
-  static const surface = Color(0xFF070B10);
-  static const card = Color(0x040A1017);
   static const border = Color(0x2478AADC);
   static const borderStrong = Color(0x666EBEFF);
   static const selected = Color(0x1A3C8CDC);
@@ -2315,11 +2759,6 @@ class _Styles {
     fontWeight: FontWeight.w700,
     letterSpacing: 3.64,
   );
-  static const status = TextStyle(
-    color: Color(0xFF8FA4B8),
-    fontSize: 13,
-    letterSpacing: 0.2,
-  );
   static const input = TextStyle(color: Color(0xFFE3F3FF), fontSize: 14.5);
   static const inputHint = TextStyle(color: Color(0xFF8FA4B8), fontSize: 14.5);
   static const prompt = TextStyle(
@@ -2354,11 +2793,6 @@ class _Styles {
     fontWeight: FontWeight.w600,
   );
   static const quickSub = TextStyle(color: Color(0xFF52616F), fontSize: 9);
-  static const metric = TextStyle(
-    color: Color(0xFFB6C9D4),
-    fontSize: 9,
-    fontWeight: FontWeight.w600,
-  );
 }
 
 String _formatClock(DateTime value) {

@@ -3,11 +3,17 @@ import 'package:ai_os/tools/windows/ui_automation/ui_automation.dart';
 import 'package:ai_os/tools/windows/ui_automation/ui_element.dart';
 
 final class MockUiAutomation implements UiAutomation {
-  MockUiAutomation({this.failure, this.invokeFailure, this.setValueFailure});
+  MockUiAutomation({
+    this.failure,
+    this.invokeFailure,
+    this.setValueFailure,
+    List<UiElement>? elements,
+  }) : elements = elements ?? tree;
 
   final Failure? failure;
   final Failure? invokeFailure;
   final Failure? setValueFailure;
+  final List<UiElement> elements;
   int inspectCallCount = 0;
   int? lastMaxDepth;
   int? lastMaxElements;
@@ -92,7 +98,7 @@ final class MockUiAutomation implements UiAutomation {
     if (failure case final failure?) {
       return Result.failure(failure);
     }
-    final depthLimited = tree
+    final depthLimited = elements
         .where((element) => element.depth <= maxDepth)
         .toList(growable: false);
     final limited = depthLimited.take(maxElements).toList(growable: false);
@@ -101,7 +107,7 @@ final class MockUiAutomation implements UiAutomation {
       elements: limited,
       maxDepth: maxDepth,
       maxElements: maxElements,
-      wasTruncated: limited.length < tree.length,
+      wasTruncated: limited.length < elements.length,
     );
     _lastInspection = inspection;
     return Result.success(inspection);
@@ -109,21 +115,21 @@ final class MockUiAutomation implements UiAutomation {
 
   @override
   Future<Result<UiElement>> getRootElement(String windowId) async =>
-      Result.success(tree.first);
+      Result.success(elements.first);
 
   @override
   Future<Result<List<UiElement>>> getChildren(String elementId) async =>
       Result.success(
-        tree.where((element) => element.parentId == elementId).toList(),
+        elements.where((element) => element.parentId == elementId).toList(),
       );
 
   @override
   Future<Result<List<UiElement>>> findElements(UiElementQuery query) async =>
-      Result.success(tree.where(query.matches).toList());
+      Result.success(elements.where(query.matches).toList());
 
   @override
   Future<Result<UiElement>> getElement(String elementId) async {
-    for (final element in _lastInspection?.elements ?? tree) {
+    for (final element in _lastInspection?.elements ?? elements) {
       if (element.id == elementId) {
         return Result.success(element);
       }

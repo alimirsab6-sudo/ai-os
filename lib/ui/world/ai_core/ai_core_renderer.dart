@@ -17,11 +17,13 @@ class AiCoreRenderer extends StatefulWidget {
   const AiCoreRenderer({
     required this.controller,
     this.animationEnabled = true,
+    this.particleDensity = 1,
     super.key,
-  });
+  }) : assert(particleDensity > 0 && particleDensity <= 1);
 
   final AiCoreController controller;
   final bool animationEnabled;
+  final double particleDensity;
 
   @override
   State<AiCoreRenderer> createState() => _AiCoreRendererState();
@@ -136,6 +138,7 @@ class _AiCoreRendererState extends State<AiCoreRenderer>
               painter: _HtmlCorePainter(
                 model: _model,
                 controller: widget.controller,
+                particleDensity: widget.particleDensity,
                 repaint: _repaint,
               ),
             ),
@@ -175,13 +178,83 @@ final class _StateParams {
 }
 
 const Map<AiCoreState, _StateParams> _stateParams = {
-  AiCoreState.idle: _StateParams(radius: 1, breathe: 1, flow: 1, turb: .05, asym: 0, irregular: 0, speak: 0, rotate: 1, bright: 1),
-  AiCoreState.listening: _StateParams(radius: 1.05, breathe: 1.4, flow: 1.2, turb: .07, asym: .05, irregular: 0, speak: 0, rotate: 1, bright: 1.06),
-  AiCoreState.thinking: _StateParams(radius: 1, breathe: 1, flow: 2.1, turb: .09, asym: .11, irregular: 0, speak: 0, rotate: 1.15, bright: 1.02),
-  AiCoreState.speaking: _StateParams(radius: 1.06, breathe: 1.3, flow: 1.8, turb: .12, asym: .10, irregular: 0, speak: 1, rotate: 1.1, bright: 1.14),
-  AiCoreState.executing: _StateParams(radius: 1.08, breathe: 1.1, flow: 2.3, turb: .17, asym: .16, irregular: 0, speak: 0, rotate: 1.7, bright: 1.10),
-  AiCoreState.success: _StateParams(radius: 1.16, breathe: 1, flow: 1.3, turb: .05, asym: 0, irregular: 0, speak: 0, rotate: 1, bright: 1.38),
-  AiCoreState.error: _StateParams(radius: 1.02, breathe: 1, flow: 1.4, turb: .16, asym: .10, irregular: .20, speak: 0, rotate: 1, bright: 1),
+  AiCoreState.idle: _StateParams(
+    radius: 1,
+    breathe: 1,
+    flow: 1,
+    turb: .05,
+    asym: 0,
+    irregular: 0,
+    speak: 0,
+    rotate: 1,
+    bright: 1,
+  ),
+  AiCoreState.listening: _StateParams(
+    radius: 1.05,
+    breathe: 1.4,
+    flow: 1.2,
+    turb: .07,
+    asym: .05,
+    irregular: 0,
+    speak: 0,
+    rotate: 1,
+    bright: 1.06,
+  ),
+  AiCoreState.thinking: _StateParams(
+    radius: 1,
+    breathe: 1,
+    flow: 2.1,
+    turb: .09,
+    asym: .11,
+    irregular: 0,
+    speak: 0,
+    rotate: 1.15,
+    bright: 1.02,
+  ),
+  AiCoreState.speaking: _StateParams(
+    radius: 1.06,
+    breathe: 1.3,
+    flow: 1.8,
+    turb: .12,
+    asym: .10,
+    irregular: 0,
+    speak: 1,
+    rotate: 1.1,
+    bright: 1.14,
+  ),
+  AiCoreState.executing: _StateParams(
+    radius: 1.08,
+    breathe: 1.1,
+    flow: 2.3,
+    turb: .17,
+    asym: .16,
+    irregular: 0,
+    speak: 0,
+    rotate: 1.7,
+    bright: 1.10,
+  ),
+  AiCoreState.success: _StateParams(
+    radius: 1.16,
+    breathe: 1,
+    flow: 1.3,
+    turb: .05,
+    asym: 0,
+    irregular: 0,
+    speak: 0,
+    rotate: 1,
+    bright: 1.38,
+  ),
+  AiCoreState.error: _StateParams(
+    radius: 1.02,
+    breathe: 1,
+    flow: 1.4,
+    turb: .16,
+    asym: .10,
+    irregular: .20,
+    speak: 0,
+    rotate: 1,
+    bright: 1,
+  ),
 };
 
 final class _HtmlCoreModel {
@@ -202,7 +275,10 @@ final class _HtmlCoreModel {
   final List<double> colorB = List<double>.filled(count, 0);
   final List<double> offX = List<double>.filled(count, 0);
   final List<double> offY = List<double>.filled(count, 0);
-  final List<_Projection> projections = List<_Projection>.generate(count, (_) => _Projection());
+  final List<_Projection> projections = List<_Projection>.generate(
+    count,
+    (_) => _Projection(),
+  );
 
   AiCoreState targetState = AiCoreState.idle;
   _StateParams current = _stateParams[AiCoreState.idle]!;
@@ -291,10 +367,16 @@ final class _Projection {
 }
 
 final class _HtmlCorePainter extends CustomPainter {
-  _HtmlCorePainter({required this.model, required this.controller, required Listenable repaint}) : super(repaint: repaint);
+  _HtmlCorePainter({
+    required this.model,
+    required this.controller,
+    required this.particleDensity,
+    required Listenable repaint,
+  }) : super(repaint: repaint);
 
   final _HtmlCoreModel model;
   final AiCoreController controller;
+  final double particleDensity;
 
   static const focal = 5.0;
   static const breathAmp = .05;
@@ -315,7 +397,11 @@ final class _HtmlCorePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
     final t = model.time;
-    final breathe = 1 + math.sin(t * math.pi * 2 * breathFreq) * breathAmp * model.current.breathe;
+    final breathe =
+        1 +
+        math.sin(t * math.pi * 2 * breathFreq) *
+            breathAmp *
+            model.current.breathe;
     final cosY = math.cos(model.yaw), sinY = math.sin(model.yaw);
     final cosP = math.cos(model.pitch), sinP = math.sin(model.pitch);
     final cx = size.width / 2;
@@ -329,9 +415,16 @@ final class _HtmlCorePainter extends CustomPainter {
     for (var i = 0; i < _HtmlCoreModel.count; i++) {
       final theta = model.polarA[i];
       final phi = model.azimA[i];
-      final asym = model.current.asym * math.sin(phi * 2 + t * .22 + model.phaseA[i] * .15) * math.sin(theta * 1.4 - t * .15);
-      final turb = model.current.turb * (.5 * math.sin(phi * 6 + t * .6 + model.phaseA[i]) + .5 * math.sin(theta * 8 - t * .9 + model.phaseB[i]));
-      final irregular = model.current.irregular * (_hash1(i * 3.1 + errStep) - .5) * 2;
+      final asym =
+          model.current.asym *
+          math.sin(phi * 2 + t * .22 + model.phaseA[i] * .15) *
+          math.sin(theta * 1.4 - t * .15);
+      final turb =
+          model.current.turb *
+          (.5 * math.sin(phi * 6 + t * .6 + model.phaseA[i]) +
+              .5 * math.sin(theta * 8 - t * .9 + model.phaseB[i]));
+      final irregular =
+          model.current.irregular * (_hash1(i * 3.1 + errStep) - .5) * 2;
 
       var speakMod = 0.0;
       if (model.current.speak > .001) {
@@ -343,11 +436,13 @@ final class _HtmlCorePainter extends CustomPainter {
         final regional = math.sin(rdx * 2.6 - t * 1.8 + model.phaseA[i] * .12);
         final phraseWave = .5 + .5 * math.sin(phi * .9 + t * .35);
         final microWave = .5 + .5 * math.sin(model.phaseB[i] + t * 9);
-        speakMod = model.current.speak * .16 * depthGain * (
-          .30 * env.phrase * phraseWave +
-          .45 * env.syllable * (.5 + .5 * regional) +
-          .25 * env.micro * microWave
-        );
+        speakMod =
+            model.current.speak *
+            .16 *
+            depthGain *
+            (.30 * env.phrase * phraseWave +
+                .45 * env.syllable * (.5 + .5 * regional) +
+                .25 * env.micro * microWave);
       }
 
       final radiusMult = 1 + asym + turb + irregular + speakMod;
@@ -386,17 +481,23 @@ final class _HtmlCorePainter extends CustomPainter {
         if (dist < outer && dist > .001) {
           final n = dist / outer;
           final falloff = 1 - n * n * (3 - 2 * n);
-          final depthPush = .55 + .45 * ((persp - .7) / (1.35 - .7)).clamp(0, 1);
+          final depthPush =
+              .55 + .45 * ((persp - .7) / (1.35 - .7)).clamp(0, 1);
           final force = falloff * repelStrength * depthPush;
           tx = dx / dist * force;
           ty = dy / dist * force;
-          final ripple = math.sin(dist / rippleWavelength - t * rippleSpeed * 1000) * rippleAmp * falloff;
+          final ripple =
+              math.sin(dist / rippleWavelength - t * rippleSpeed * 1000) *
+              rippleAmp *
+              falloff;
           tx += dx / dist * ripple;
           ty += dy / dist * ripple;
         }
       }
       final targetMag = math.sqrt(tx * tx + ty * ty);
-      final curMag = math.sqrt(model.offX[i] * model.offX[i] + model.offY[i] * model.offY[i]);
+      final curMag = math.sqrt(
+        model.offX[i] * model.offX[i] + model.offY[i] * model.offY[i],
+      );
       final ease = targetMag > curMag ? repelEaseIn : repelEaseOut;
       model.offX[i] += (tx - model.offX[i]) * ease;
       model.offY[i] += (ty - model.offY[i]) * ease;
@@ -416,31 +517,51 @@ final class _HtmlCorePainter extends CustomPainter {
     final paint = Paint()..blendMode = BlendMode.plus;
     for (final p in model.projections) {
       final i = p.index;
+      if (particleDensity < 1 && _hash1(i * 13.17 + 8.2) > particleDensity) {
+        continue;
+      }
       final depth = p.persp.clamp(.7, 1.35).toDouble();
       final depthT = (depth - .7) / (.65);
       final pointSize = (1.6 + math.sin(t * 2 + i * .01) * .3) * depth;
-      final alpha = math.min(1.0, (.62 + .3 * depthT) * model.current.bright * controller.intensity).toDouble();
+      final alpha = math
+          .min(
+            1.0,
+            (.62 + .3 * depthT) * model.current.bright * controller.intensity,
+          )
+          .toDouble();
       paint.color = Color.fromRGBO(
         (model.colorR[i] * 255).round(),
         (model.colorG[i] * 255).round(),
         (model.colorB[i] * 255).round(),
         alpha,
       );
-      canvas.drawCircle(Offset(p.sx, p.sy), math.max(.4, pointSize).toDouble(), paint);
+      canvas.drawCircle(
+        Offset(p.sx, p.sy),
+        math.max(.4, pointSize).toDouble(),
+        paint,
+      );
     }
-
   }
 
   @override
   bool shouldRepaint(covariant _HtmlCorePainter oldDelegate) => true;
 }
 
-({double phrase, double syllable, double micro, double total}) _speechEnvelope(double t) {
+({double phrase, double syllable, double micro, double total}) _speechEnvelope(
+  double t,
+) {
   final phrase = .5 + .5 * math.sin(t * .7 + math.sin(t * .13) * 2);
   final gate = phrase > .32 ? 1.0 : math.max(0.0, phrase / .32).toDouble();
-  final syllable = math.max(0.0, math.sin(t * 3.1 + 1.7 + math.sin(t * .9 + .6) * 1.5)).toDouble();
+  final syllable = math
+      .max(0.0, math.sin(t * 3.1 + 1.7 + math.sin(t * .9 + .6) * 1.5))
+      .toDouble();
   final micro = .5 + .5 * math.sin(t * 11 + 3.4);
-  return (phrase: gate, syllable: syllable, micro: micro, total: gate * (.6 * syllable + .4 * micro));
+  return (
+    phrase: gate,
+    syllable: syllable,
+    micro: micro,
+    total: gate * (.6 * syllable + .4 * micro),
+  );
 }
 
 double _hash1(double n) {

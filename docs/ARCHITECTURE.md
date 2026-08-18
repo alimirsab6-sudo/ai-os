@@ -1,10 +1,46 @@
 # AI OS architecture
 
+## Local voice access
+
+Voice input extends the existing application rather than creating another
+command or orchestration architecture. `VoiceAgent` owns enrollment, reset,
+and session security reporting. Verified speech enters the existing
+deterministic `CommandInterpreter` and `Orchestrator`, preserving PC/Browser
+agents and the permission authorizer as the execution boundary.
+
+`RecordMicrophoneCapture` captures 16 kHz mono PCM16 through Windows Media
+Foundation. `SherpaVoiceRuntime` performs model initialization and inference
+in a background isolate. It provides Moonshine v2 tiny English STT, Zipformer
+keyword spotting, and WeSpeaker embeddings. Kokoro and `af_bella` remain the
+only TTS system.
+
+```text
+Crony detected
+  → speaker embedding
+  → cosine score >= 0.75?
+      no: session event + voice access locked
+      yes: local STT → existing interpreter/orchestrator/permission flow
+```
+
+The wake phrase and spoken display name never authenticate a user. Tool
+permissions remain authoritative. Unknown-speaker events are session-memory
+only and are acknowledged after the verified owner is informed once.
+
+Startup readiness is emitted per subsystem. WebView2 remains not-ready until
+its actual lifecycle initializes, and the Files placeholder is reported as
+unavailable. Audio playback is marked ready only after the real startup
+greeting completes.
+
+The approved renderer is unchanged. Existing `AiCoreController` states are
+driven by actual voice events: capture maps to `listening`, verification/STT
+to `thinking`, existing tool events to `executing`, and audio-player callbacks
+to `speaking`.
+
 ## Scope
 
-Milestone 3C.1 retains the earlier boundaries and adds local Chrome profile
-discovery, validated profile-aware launch, a Browser Agent routing boundary,
-and selected-profile BrowserSession state. Value/SetValue, Invoke, generic
+Phase 2D retains the earlier boundaries and integrates the personal CronyX
+Browser into the approved Flutter shell using WebView2 and a dedicated local
+profile. Value/SetValue, Invoke, generic
 Chrome launch, window discovery/control, and UI
 inspection remain intact. The Flutter Windows runner remains unchanged, and
 platform-neutral models/interfaces remain plain Dart.
@@ -20,10 +56,12 @@ platform-neutral models/interfaces remain plain Dart.
 - `agents/` defines specialized coordinators. The PC Agent routes structured
   launch, discovery, top-level window control, bounded UI inspection, and
   semantic Invoke and SetValue requests to configured tools.
-- `agents/browser_agent/` routes Chrome profile discovery/launch and validated
-  HTTP(S) URL opening. It owns no tabs or website interaction behavior.
-- `browser/` holds application-neutral browser session state plus isolated
-  Chrome profile and Windows launch adapters.
+- `agents/browser_agent/` routes Chrome profile discovery/launch, legacy URL
+  launch when configured, and authorized embedded-browser operations. It owns
+  no widgets, tabs, JavaScript, or website interaction behavior.
+- `browser/` holds application-neutral browser session state, the
+  `BrowserController` abstraction, the persistent CronyX profile policy, and
+  isolated Chrome/WebView2 Windows adapters.
 - `tools/` defines structured metadata, input schemas, execution results, and
   the authorization gate. Windows application resolution and launching are
   isolated below `tools/windows/`; native Win32 details stay in the discovery
@@ -68,9 +106,59 @@ Command bar / Quick Action
   -> Core, HUD, Live Action, Activity
 ```
 
-`OpenUrlCommand` accepts only absolute HTTP(S) URLs without user-info. Its
-Windows adapter resolves Edge or Chrome through the application allow-list and
-starts that executable directly with one URL argument and `runInShell: false`.
+`OpenUrlCommand` accepts only absolute HTTP(S) URLs without user-info. In the
+Phase 2D composition it routes to the embedded browser tool. The legacy Windows
+URL launcher remains isolated and covered for configurations without the
+embedded tool.
+
+## Personal CronyX Browser (Phase 2D)
+
+```text
+Existing command bar / Browser toolbar / Browser navigation item
+  -> deterministic OrchestratorCommand
+  -> Orchestrator
+  -> BrowserAgent
+  -> EmbeddedBrowserTool
+  -> PermissionAuthorizer(execute)
+  -> BrowserController
+  -> WindowsWebView2BrowserController
+  -> Microsoft Edge WebView2
+  -> %LOCALAPPDATA%\CronyX\Browser\Profile
+```
+
+`EmbeddedBrowserTool` accepts only the fixed operations `initialize`,
+`navigate`, `back`, `forward`, `reload`, `current_url`, `title`, and `dispose`.
+It accepts no JavaScript, selector, keystroke, coordinate, executable, shell,
+profile path, cookie, or form-value input. Navigation reuses
+`EmbeddedBrowserUrlPolicy`, which allows absolute HTTP/HTTPS URLs with a host
+and rejects user-info and all other schemes.
+
+The WebView2 adapter publishes controller snapshots containing initialization,
+loading, URL, title, and history availability. Popup windows and default
+context menus are disabled, and every WebView permission request is denied.
+The dedicated profile persists across application launches and is never placed
+in event payloads. The interactive controller is session-scoped: selecting
+Browser initializes WebView2, selecting Core disposes its native controller and
+subscriptions after the surface is unmounted, and a later Browser selection
+creates a new controller against the same persistent profile.
+
+Lifecycle events are `browser.created`, `browser.ready`,
+`browser.navigation.requested`, `browser.navigation.started`,
+`browser.navigation.completed`, `browser.navigation.failed`,
+`browser.page.loaded`, and `browser.disposed`, alongside generic tool events.
+Payloads contain operation, host, safe title, and failure code only. They omit
+full URLs, query strings, page contents, cookies, credentials, tokens, form
+values, and profile paths. The existing shell consumes these real events to
+drive the authoritative `AiCoreController`, Live Action, and Activity views.
+
+The final shell layout retains four areas: the existing navigation with a
+small instance of the existing `AiCore` renderer/controller directly below it;
+the large selected Core or Browser center workspace; the existing Live Action,
+Activity, and capability-accurate Quick Actions on the right; and the existing
+CronyX command bar floating over the bottom of the center workspace. The
+browser remains a full-height layer behind that independent overlay. Browser
+widgets never call WebView2 directly; their callbacks submit structured
+commands to the Orchestrator.
 
 The provider-oriented flow established in Milestone 0B remains available:
 
@@ -378,6 +466,57 @@ The core must remain provider-agnostic because model availability, protocols,
 and tool-call formats vary. Keeping translation in adapters prevents provider
 changes from forcing application-wide rewrites and keeps tests offline.
 
+## Local speech output
+
+`SpeechSynthesizer` is the application-facing lifecycle boundary:
+`initialize`, `speak`, `stop`, and `dispose`. `KokoroSpeechSynthesizer` remains
+independent of the command interpreter, agents, and tools. The shell invokes it
+only after an authoritative successful command result has produced user-facing
+text; a TTS failure does not rewrite that command result.
+
+`NodeKokoroBridge` owns one persistent, managed Node process. Its executable
+and application-owned bridge entrypoint are fixed by composition, it starts
+with `runInShell: false`, and requests contain only a numeric ID, the fixed
+`synthesize` operation, and validated text. The Node side disables remote model
+loading and fixes the model, tokenizer, output directory, and `af_bella` voice.
+It is not a terminal, generic JavaScript runner, file browser, or localhost
+service.
+
+The CPU ONNX session uses two intra-op threads, one inter-op thread, sequential
+execution, and full graph optimization. These settings were selected by local
+measurement; DirectML is not used because the target Intel GPU/ONNX combination
+fails a Kokoro `ConvTranspose` operation. Successful generations are cached
+under `runtime/kokoro/output/bridge/cache` using application-generated SHA-256
+filenames derived from a fixed model/voice/speed version and the response text.
+No caller controls a cache path. A cache hit skips inference and WAV writing but
+still traverses Flutter's allowed-output check and full WAV/non-silence
+inspection before playback.
+
+Before playback, `WavAudioInspector` parses RIFF chunks and verifies that the
+returned file exists, is non-empty and non-silent, and matches 24 kHz mono
+32-bit IEEE float WAV metadata. `WindowsSpeechAudioPlayer` uses a controlled
+local `DeviceFileSource` with the `audioplayers` Windows Media Foundation
+backend. Playback start comes from the player's native-backed playing state;
+completion comes from its native completion stream. There is no estimated
+duration or delayed `SPEAKING` timer. A new speech request stops the prior
+playback, and disposal releases both the player and managed runtime process.
+
+TTS lifecycle and failure events remain UI-independent:
+`tts.runtime.ready`, `tts.request.created`, `tts.generation.started`, `tts.audio.generated`,
+`tts.playback.started`, `tts.playback.completed`, `tts.playback.stopped`,
+`tts.failed`, and `tts.disposed`. Only actual playback start drives the existing
+`AiCoreController` to `SPEAKING`; completion, stop, or failure returns it to
+idle. Runtime and decoder diagnostics go to development logging, not the
+user-facing interface.
+
+Current limitations: output is Windows-only, uses the fixed `af_bella` voice,
+requires the prepared local Node/Kokoro runtime beside the application, and is
+not yet packaged into a relocatable installer. There is no speech recognition,
+microphone input, voice selection UI, streaming synthesis, or remote fallback.
+An uncached response still incurs hardware-bound local inference; the latency
+target is met for deterministic cached responses, while novel text is cached
+after its first successful generation.
+
 ## Future MCP integration
 
 An MCP adapter will implement `McpGateway`, translate discovered MCP tools into
@@ -467,11 +606,14 @@ implementation is volatile and intentionally has no vector or cloud backend.
 
 ## Current limitations
 
-Only generic/profile-aware Chrome launch, Chrome profile discovery and selected
-session profile state, window discovery/control, bounded UI discovery, Invoke,
-and Value/SetValue are implemented. Selection, Toggle, ExpandCollapse, Scroll,
-RangeValue, and Text actions are not implemented. There is no navigation, screenshot/OCR,
-browser-specific control, keyboard/mouse input, arbitrary process/terminal
-execution, process termination, or persistent element reference. Provider-
-driven execution, other semantic actions, and non-Windows automation remain
-future work.
+The embedded browser implements initialization, validated HTTP(S) navigation,
+Back, Forward, Reload, current URL, page title, loading/history state, and
+lifecycle/disposal. It does not expose tabs, DOM/page reading, AI-driven
+clicking or typing, JavaScript/CDP, DevTools, downloads, uploads, credential or
+payment automation, or authentication submission. A human can interact with a
+rendered website through the WebView itself; CronyX has no API for capturing or
+automating those values. Download cancellation and custom origin policy are
+not yet exposed by the controller and must be designed before any download or
+upload capability is claimed. Screenshot/OCR, arbitrary process/terminal
+execution, process termination, provider-driven execution, other semantic
+actions, and non-Windows automation remain future work.

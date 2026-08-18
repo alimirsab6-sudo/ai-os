@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:ai_os/agents/pc_agent/pc_agent.dart';
 import 'package:ai_os/ai/model_provider/mock_model_provider.dart';
 import 'package:ai_os/core/events/event_bus.dart';
+import 'package:ai_os/core/events/app_event.dart';
 import 'package:ai_os/core/orchestrator/orchestrator.dart';
 import 'package:ai_os/core/result.dart';
 import 'package:ai_os/core/security/permission.dart';
@@ -11,10 +12,12 @@ import 'package:ai_os/tools/windows/applications/application_launcher.dart';
 import 'package:ai_os/tools/windows/launch_application_tool.dart';
 import 'package:ai_os/ui/shell/cronyx_os_shell.dart';
 import 'package:ai_os/ui/world/ai_core/ai_core_state.dart';
+import 'package:ai_os/voice/speech_synthesizer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/pc_agent_fakes.dart';
+import 'support/speech_fakes.dart';
 
 final class _ControlledLauncher implements ApplicationLauncher {
   final Completer<Result<ApplicationLaunchReceipt>> completion = Completer();
@@ -80,6 +83,7 @@ Orchestrator _createOrchestrator(
 Widget _desktopShell({
   required Orchestrator orchestrator,
   ValueChanged<AiCoreState>? onCoreStateChanged,
+  SpeechSynthesizer? speechSynthesizer,
 }) => MaterialApp(
   home: FittedBox(
     fit: BoxFit.scaleDown,
@@ -90,6 +94,7 @@ Widget _desktopShell({
       child: CronyxOsShell(
         orchestrator: orchestrator,
         onCoreStateChanged: onCoreStateChanged,
+        speechSynthesizer: speechSynthesizer,
       ),
     ),
   ),
@@ -280,28 +285,125 @@ void main() {
     await _disposeShell(tester, events);
   });
 
-  testWidgets('Run Command remains safely unsupported', (tester) async {
+  testWidgets('unimplemented and unsafe quick actions are not exposed', (
+    tester,
+  ) async {
     final events = EventBus();
     final launcher = _ControlledLauncher();
+    await tester.pumpWidget(
+      _desktopShell(orchestrator: _createOrchestrator(events, launcher)),
+    );
+    _discardApprovedShellOverflows(tester);
+
+    expect(find.byKey(const Key('quick-action-Run Command')), findsNothing);
+    expect(find.byKey(const Key('quick-action-Add Agent')), findsNothing);
+    expect(launcher.launchCount, 0);
+    await _disposeShell(tester, events);
+  });
+
+  testWidgets('successful command speaks and follows actual playback states', (
+    tester,
+  ) async {
+    final events = EventBus();
+    final launcher = _ControlledLauncher();
+    final speech = FakeSpeechSynthesizer(events: events);
     final states = <AiCoreState>[];
     await tester.pumpWidget(
       _desktopShell(
         orchestrator: _createOrchestrator(events, launcher),
+        speechSynthesizer: speech,
         onCoreStateChanged: states.add,
       ),
     );
     _discardApprovedShellOverflows(tester);
 
-    await tester.tap(find.byKey(const Key('quick-action-Run Command')));
+    await tester.enterText(
+      find.byKey(const Key('command-input')),
+      'Open Chrome',
+    );
+    await tester.tap(find.byKey(const Key('command-send')));
+    await tester.pump();
+    launcher.succeed();
     await tester.pump();
     _discardApprovedShellOverflows(tester);
 
-    expect(launcher.launchCount, 0);
+    expect(speech.spokenTexts, ['Google Chrome opened successfully.']);
     expect(
       states,
-      containsAllInOrder([AiCoreState.thinking, AiCoreState.error]),
+      containsAllInOrder([AiCoreState.success, AiCoreState.speaking]),
     );
-    expect(find.text('That command is not supported yet'), findsWidgets);
+    expect(states.last, AiCoreState.speaking);
+
+    speech.completePlayback();
+    await tester.pump();
+    expect(states.last, AiCoreState.idle);
+    await _disposeShell(tester, events);
+  });
+
+  testWidgets('voice failure does not replace successful command result', (
+    tester,
+  ) async {
+    final events = EventBus();
+    final launcher = _ControlledLauncher();
+    final speech = FakeSpeechSynthesizer(events: events, failSpeech: true);
+    final states = <AiCoreState>[];
+    await tester.pumpWidget(
+      _desktopShell(
+        orchestrator: _createOrchestrator(events, launcher),
+        speechSynthesizer: speech,
+        onCoreStateChanged: states.add,
+      ),
+    );
+    _discardApprovedShellOverflows(tester);
+
+    await tester.enterText(
+      find.byKey(const Key('command-input')),
+      'Open Chrome',
+    );
+    await tester.tap(find.byKey(const Key('command-send')));
+    await tester.pump();
+    launcher.succeed();
+    await tester.pump();
+    _discardApprovedShellOverflows(tester);
+
+    expect(speech.spokenTexts, ['Google Chrome opened successfully.']);
+    expect(states, contains(AiCoreState.success));
+    expect(states, isNot(contains(AiCoreState.error)));
+    expect(find.text('Google Chrome opened successfully.'), findsWidgets);
+    expect(find.text('Voice response unavailable'), findsOneWidget);
+    await _disposeShell(tester, events);
+  });
+
+  testWidgets('internal debug events are never sent to speech', (tester) async {
+    final events = EventBus();
+    final speech = FakeSpeechSynthesizer(
+      events: events,
+      completeImmediately: true,
+    );
+    await tester.pumpWidget(
+      _desktopShell(
+        orchestrator: _createOrchestrator(events),
+        speechSynthesizer: speech,
+      ),
+    );
+    _discardApprovedShellOverflows(tester);
+
+    events.publish(
+      ApplicationEvent(
+        type: 'browser.created',
+        occurredAt: DateTime.now().toUtc(),
+      ),
+    );
+    events.publish(
+      ApplicationEvent(
+        type: 'tool.started',
+        occurredAt: DateTime.now().toUtc(),
+        data: const {'tool_id': 'debug.internal'},
+      ),
+    );
+    await tester.pump();
+
+    expect(speech.spokenTexts, isEmpty);
     await _disposeShell(tester, events);
   });
 }
