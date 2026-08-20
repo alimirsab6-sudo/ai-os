@@ -1,4 +1,4 @@
-import '../../../core/result.dart';
+﻿import '../../../core/result.dart';
 
 enum WindowOperation { activate, minimize, maximize, restore, close }
 
@@ -17,3 +17,4 @@ abstract interface class WindowController {
   Future<Result<WindowControlReceipt>> restore(String windowId);
   Future<Result<WindowControlReceipt>> close(String windowId);
 }
+

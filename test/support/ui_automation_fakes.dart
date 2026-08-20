@@ -1,4 +1,4 @@
-import 'package:ai_os/core/result.dart';
+﻿import 'package:ai_os/core/result.dart';
 import 'package:ai_os/tools/windows/ui_automation/ui_automation.dart';
 import 'package:ai_os/tools/windows/ui_automation/ui_element.dart';
 
@@ -198,3 +198,4 @@ final class MockUiAutomation implements UiAutomation {
     );
   }
 }
+

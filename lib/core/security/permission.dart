@@ -1,4 +1,4 @@
-import '../result.dart';
+﻿import '../result.dart';
 
 enum Permission { read, write, execute, sensitive }
 
@@ -42,3 +42,4 @@ final class AllowListPermissionAuthorizer implements PermissionAuthorizer {
     return const Result.success(null);
   }
 }
+

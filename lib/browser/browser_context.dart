@@ -1,4 +1,4 @@
-import '../tools/windows/discovery/window_info.dart';
+﻿import '../tools/windows/discovery/window_info.dart';
 import '../tools/windows/ui_automation/ui_element.dart';
 
 enum BrowserApplication { chrome, edge }
@@ -85,3 +85,4 @@ BrowserApplication? browserApplicationFor(WindowInfo window) =>
       'edge' => BrowserApplication.edge,
       _ => null,
     };
+

@@ -1,4 +1,4 @@
-import 'package:ai_os/browser/browser_session.dart';
+﻿import 'package:ai_os/browser/browser_session.dart';
 import 'package:ai_os/browser/chrome/chrome_profile.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -25,3 +25,4 @@ void main() {
     expect(session.selectedProfile, isNull);
   });
 }
+

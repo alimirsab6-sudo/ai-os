@@ -1,4 +1,4 @@
-import '../placeholder_tool.dart';
+﻿import '../placeholder_tool.dart';
 
 final class WindowsToolPlaceholder extends PlaceholderTool {
   const WindowsToolPlaceholder();
@@ -12,3 +12,4 @@ final class WindowsToolPlaceholder extends PlaceholderTool {
   @override
   String get description => 'Reserved boundary for future Windows automation.';
 }
+

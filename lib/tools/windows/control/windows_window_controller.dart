@@ -1,4 +1,4 @@
-import 'dart:ffi';
+﻿import 'dart:ffi';
 import 'dart:io';
 
 import '../../../core/result.dart';
@@ -168,3 +168,4 @@ final class _WindowControlApi {
   late final _ShowWindowDart showWindow;
   late final _PostMessageDart postMessage;
 }
+

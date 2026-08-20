@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import '../../browser/embedded/browser_controller.dart';
 import '../../core/events/app_event.dart';
@@ -365,3 +365,4 @@ final class EmbeddedBrowserTool extends AuthorizedTool {
     ),
   );
 }
+

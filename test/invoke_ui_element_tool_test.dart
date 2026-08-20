@@ -1,4 +1,4 @@
-import 'package:ai_os/core/events/app_event.dart';
+﻿import 'package:ai_os/core/events/app_event.dart';
 import 'package:ai_os/core/events/event_bus.dart';
 import 'package:ai_os/core/result.dart';
 import 'package:ai_os/core/security/permission.dart';
@@ -214,3 +214,4 @@ InvokeUiElementTool _tool(EventBus events, MockUiAutomation automation) =>
 ToolExecutionContext _executeContext() => ToolExecutionContext(
   authorizer: AllowListPermissionAuthorizer({Permission.execute}),
 );
+

@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import '../../core/result.dart';
 import 'chrome_installation_resolver.dart';
@@ -76,3 +76,4 @@ final class WindowsChromeLauncher implements ChromeLauncher {
     }
   }
 }
+

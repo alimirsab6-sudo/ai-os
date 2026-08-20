@@ -1,4 +1,4 @@
-import 'dart:ffi';
+﻿import 'dart:ffi';
 import 'dart:io';
 
 import 'package:ffi/ffi.dart';
@@ -126,3 +126,4 @@ final class WindowsProcessLauncher implements ApplicationLauncher {
     }
   }
 }
+

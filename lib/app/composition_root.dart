@@ -58,12 +58,11 @@ import '../voice/kokoro/node_kokoro_bridge.dart';
 import '../voice/speech_synthesizer.dart';
 import '../voice/assistant/local_voice_assistant.dart';
 import '../voice/assistant/voice_assistant.dart';
-import '../voice/input/microphone_capture.dart';
-import '../voice/input/record_microphone_capture.dart';
+import '../voice/input/windows_microphone_capture.dart';
 import '../voice/profile/local_owner_profile_repository.dart';
 import '../voice/profile/owner_profile_repository.dart';
 import '../voice/recognition/local_voice_runtime.dart';
-import '../voice/recognition/sherpa_voice_runtime.dart';
+import '../voice/recognition/windows_voice_runtime.dart';
 import 'service_registry.dart';
 import 'local_runtime_root.dart';
 
@@ -241,9 +240,9 @@ final class CompositionRoot {
       events: events,
       diagnostics: (message) => debugPrint('CRONYX_TTS $message'),
     );
-    final microphone = RecordMicrophoneCapture();
     final ownerProfiles = LocalOwnerProfileRepository();
-    final voiceRuntime = SherpaVoiceRuntime(
+    final microphone = WindowsMicrophoneCapture();
+    final voiceRuntime = WindowsVoiceRuntime(
       paths: VoiceRuntimePaths(projectRoot: projectRoot),
     );
     late final Orchestrator orchestrator;
@@ -325,9 +324,7 @@ final class CompositionRoot {
       ..register<KokoroBridge>(kokoroBridge)
       ..register<SpeechAudioPlayer>(speechAudioPlayer)
       ..register<SpeechSynthesizer>(speechSynthesizer)
-      ..register<MicrophoneCapture>(microphone)
       ..register<OwnerProfileRepository>(ownerProfiles)
-      ..register<LocalVoiceRuntime>(voiceRuntime)
       ..register<VoiceAssistant>(voiceAssistant)
       ..register<PcAgent>(agents.whereType<PcAgent>().single)
       ..register<BrowserAgent>(agents.whereType<BrowserAgent>().single)
@@ -335,3 +332,13 @@ final class CompositionRoot {
       ..register<Orchestrator>(orchestrator);
   }
 }
+
+
+
+
+
+
+
+
+
+

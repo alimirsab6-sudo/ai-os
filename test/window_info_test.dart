@@ -1,4 +1,4 @@
-import 'package:ai_os/tools/windows/discovery/window_info.dart';
+﻿import 'package:ai_os/tools/windows/discovery/window_info.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -29,3 +29,4 @@ void main() {
     });
   });
 }
+

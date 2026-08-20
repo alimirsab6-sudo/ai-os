@@ -1,4 +1,4 @@
-import 'package:ai_os/browser/chrome/windows_chrome_launcher.dart';
+﻿import 'package:ai_os/browser/chrome/windows_chrome_launcher.dart';
 import 'package:ai_os/core/result.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -85,3 +85,4 @@ void main() {
 
 String? _failureCode<T>(Result<T> result) =>
     result.fold((_) => null, (failure) => failure.code);
+

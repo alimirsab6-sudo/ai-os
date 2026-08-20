@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 import 'dart:async';
 
 import 'package:ai_os/core/result.dart';
@@ -186,3 +186,4 @@ OwnerVoiceProfile ownerProfile({String name = 'Ali'}) => OwnerVoiceProfile(
   embedding: unitEmbedding(),
   createdAt: DateTime.utc(2026, 8, 18),
 );
+

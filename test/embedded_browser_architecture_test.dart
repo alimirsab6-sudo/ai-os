@@ -1,4 +1,4 @@
-import 'package:ai_os/browser/embedded/browser_controller.dart';
+﻿import 'package:ai_os/browser/embedded/browser_controller.dart';
 import 'package:ai_os/browser/embedded/cronyx_browser_profile.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -53,3 +53,4 @@ void main() {
     }
   });
 }
+

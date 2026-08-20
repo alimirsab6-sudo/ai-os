@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:ai_os/browser/embedded/browser_controller.dart';
 import 'package:ai_os/core/result.dart';
@@ -149,3 +149,4 @@ final class FakeBrowserController implements BrowserController {
     await _states.close();
   }
 }
+

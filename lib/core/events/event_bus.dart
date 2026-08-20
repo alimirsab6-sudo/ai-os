@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'app_event.dart';
 
@@ -17,3 +17,4 @@ final class EventBus implements EventPublisher {
 
   Future<void> close() => _controller.close();
 }
+

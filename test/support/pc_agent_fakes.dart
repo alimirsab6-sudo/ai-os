@@ -1,4 +1,4 @@
-import 'package:ai_os/core/result.dart';
+﻿import 'package:ai_os/core/result.dart';
 import 'package:ai_os/tools/windows/applications/application_descriptor.dart';
 import 'package:ai_os/tools/windows/applications/application_launcher.dart';
 import 'package:ai_os/tools/windows/applications/windows_application_registry.dart';
@@ -48,3 +48,4 @@ final class MockApplicationLauncher implements ApplicationLauncher {
     );
   }
 }
+

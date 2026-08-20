@@ -1,4 +1,4 @@
-import '../core/result.dart';
+﻿import '../core/result.dart';
 
 final class SkillRequest {
   const SkillRequest({this.input = const {}});
@@ -43,3 +43,4 @@ final class PlaceholderSkill implements Skill {
         SkillOutput(message: 'Placeholder workflow completed.'),
       );
 }
+

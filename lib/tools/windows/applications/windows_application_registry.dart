@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import '../../../core/result.dart';
 import 'application_descriptor.dart';
@@ -240,3 +240,4 @@ final class WindowsApplicationRegistry implements ApplicationRegistry {
     );
   }
 }
+

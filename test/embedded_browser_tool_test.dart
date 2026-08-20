@@ -1,4 +1,4 @@
-import 'package:ai_os/core/events/app_event.dart';
+﻿import 'package:ai_os/core/events/app_event.dart';
 import 'package:ai_os/browser/embedded/browser_controller.dart';
 import 'package:ai_os/core/events/event_bus.dart';
 import 'package:ai_os/core/security/permission.dart';
@@ -182,3 +182,4 @@ void main() {
     },
   );
 }
+

@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:ai_os/browser/chrome/windows_chrome_profile_registry.dart';
 import 'package:ai_os/core/result.dart';
@@ -147,3 +147,4 @@ WindowsChromeProfileRegistry _registry(
 
 String? _failureCode<T>(Result<T> result) =>
     result.fold((_) => null, (failure) => failure.code);
+

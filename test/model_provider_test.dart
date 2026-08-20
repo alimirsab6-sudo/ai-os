@@ -1,4 +1,4 @@
-import 'package:ai_os/ai/model_provider/mock_model_provider.dart';
+﻿import 'package:ai_os/ai/model_provider/mock_model_provider.dart';
 import 'package:ai_os/ai/model_provider/model_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,3 +17,4 @@ void main() {
     );
   });
 }
+

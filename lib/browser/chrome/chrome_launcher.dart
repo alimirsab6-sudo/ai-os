@@ -1,4 +1,4 @@
-import '../../core/result.dart';
+﻿import '../../core/result.dart';
 import 'chrome_profile.dart';
 
 final class ChromeProfileLaunchReceipt {
@@ -14,3 +14,4 @@ final class ChromeProfileLaunchReceipt {
 abstract interface class ChromeLauncher {
   Future<Result<ChromeProfileLaunchReceipt>> launch(String profileId);
 }
+

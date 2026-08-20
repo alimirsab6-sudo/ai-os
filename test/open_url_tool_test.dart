@@ -1,4 +1,4 @@
-import 'package:ai_os/browser/browser_url_launcher.dart';
+﻿import 'package:ai_os/browser/browser_url_launcher.dart';
 import 'package:ai_os/core/events/event_bus.dart';
 import 'package:ai_os/core/result.dart';
 import 'package:ai_os/core/security/permission.dart';
@@ -94,3 +94,4 @@ void main() {
     await events.close();
   });
 }
+

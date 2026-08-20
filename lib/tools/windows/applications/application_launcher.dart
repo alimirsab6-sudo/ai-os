@@ -1,4 +1,4 @@
-import '../../../core/result.dart';
+﻿import '../../../core/result.dart';
 import 'application_descriptor.dart';
 
 final class ApplicationLaunchReceipt {
@@ -13,3 +13,4 @@ abstract interface class ApplicationLauncher {
     ResolvedApplication application,
   );
 }
+

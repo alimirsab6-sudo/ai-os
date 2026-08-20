@@ -1,4 +1,4 @@
-import '../../core/result.dart';
+﻿import '../../core/result.dart';
 import 'chrome_profile.dart';
 
 abstract interface class ChromeProfileRegistry {
@@ -7,3 +7,4 @@ abstract interface class ChromeProfileRegistry {
   List<ChromeProfile> listProfiles();
   Result<ResolvedChromeProfile> resolveProfile(String profileId);
 }
+

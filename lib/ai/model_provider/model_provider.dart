@@ -1,4 +1,4 @@
-import '../../core/result.dart';
+﻿import '../../core/result.dart';
 
 enum ModelMessageRole { user, assistant, system, tool }
 
@@ -54,3 +54,4 @@ abstract interface class ModelProvider {
 
   Future<Result<ModelResponse>> generate(ModelRequest request);
 }
+

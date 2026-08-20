@@ -1,4 +1,4 @@
-import '../../core/result.dart';
+﻿import '../../core/result.dart';
 
 enum BrowserLoadingState { idle, loading, completed }
 
@@ -56,3 +56,4 @@ final class EmbeddedBrowserUrlPolicy {
     return Result.success(url);
   }
 }
+

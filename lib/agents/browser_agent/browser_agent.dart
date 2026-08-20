@@ -1,4 +1,4 @@
-import '../../browser/chrome/chrome_profile_tools.dart';
+﻿import '../../browser/chrome/chrome_profile_tools.dart';
 import '../../core/result.dart';
 import '../../core/security/permission.dart';
 import '../../tools/tool.dart';
@@ -98,3 +98,4 @@ final class BrowserAgent implements Agent {
     );
   }
 }
+

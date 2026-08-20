@@ -1,4 +1,4 @@
-import '../placeholder_tool.dart';
+﻿import '../placeholder_tool.dart';
 
 final class FileToolPlaceholder extends PlaceholderTool {
   const FileToolPlaceholder();
@@ -12,3 +12,4 @@ final class FileToolPlaceholder extends PlaceholderTool {
   @override
   String get description => 'Reserved boundary for future file operations.';
 }
+

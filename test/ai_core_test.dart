@@ -1,4 +1,4 @@
-import 'package:ai_os/ui/world/ai_core/ai_core.dart';
+﻿import 'package:ai_os/ui/world/ai_core/ai_core.dart';
 import 'package:ai_os/ui/world/ai_core/ai_core_controller.dart';
 import 'package:ai_os/ui/world/ai_core/ai_core_demo_screen.dart';
 import 'package:ai_os/ui/world/ai_core/ai_core_renderer.dart';
@@ -114,3 +114,4 @@ void main() {
     await tester.binding.setSurfaceSize(null);
   });
 }
+

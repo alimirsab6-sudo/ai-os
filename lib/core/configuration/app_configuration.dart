@@ -1,4 +1,4 @@
-import '../security/permission.dart';
+﻿import '../security/permission.dart';
 
 final class LocalModelConfiguration {
   const LocalModelConfiguration({this.endpoint, this.modelName});
@@ -36,3 +36,4 @@ final class AppConfiguration {
   final Map<String, bool> featureFlags;
   final StorageLocations storageLocations;
 }
+

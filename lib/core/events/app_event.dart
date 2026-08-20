@@ -1,4 +1,4 @@
-abstract class AppEvent {
+﻿abstract class AppEvent {
   const AppEvent({required this.type, required this.occurredAt});
 
   final String type;
@@ -14,3 +14,4 @@ final class ApplicationEvent extends AppEvent {
 
   final Map<String, Object?> data;
 }
+

@@ -1,4 +1,4 @@
-import 'package:ai_os/browser/chrome/chrome_profile.dart';
+﻿import 'package:ai_os/browser/chrome/chrome_profile.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -20,3 +20,4 @@ void main() {
     expect(profile.id, isNot(contains(r'\')));
   });
 }
+

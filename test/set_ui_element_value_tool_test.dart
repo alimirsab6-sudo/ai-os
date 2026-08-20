@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:ai_os/core/events/app_event.dart';
 import 'package:ai_os/core/events/event_bus.dart';
@@ -239,3 +239,4 @@ ToolExecutionContext _writeContext() => ToolExecutionContext(
 
 String? _failureCode(Result<ToolOutput> result) =>
     result.fold((_) => null, (failure) => failure.code);
+

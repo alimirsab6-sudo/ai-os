@@ -1,4 +1,4 @@
-import 'package:ai_os/browser/chrome/windows_chrome_installation_resolver.dart';
+﻿import 'package:ai_os/browser/chrome/windows_chrome_installation_resolver.dart';
 import 'package:ai_os/core/result.dart';
 import 'package:ai_os/tools/windows/applications/application_descriptor.dart';
 import 'package:ai_os/tools/windows/applications/application_registry.dart';
@@ -66,3 +66,4 @@ final class _InvalidChromeRegistry implements ApplicationRegistry {
   Result<void> register(ApplicationDescriptor application) =>
       const Result.success(null);
 }
+

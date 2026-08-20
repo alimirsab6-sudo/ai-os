@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+﻿import 'package:flutter/widgets.dart';
 
 import 'ai_core_controller.dart';
 import 'ai_core_renderer.dart';
@@ -34,3 +34,4 @@ class AiCore extends StatelessWidget {
     ),
   );
 }
+

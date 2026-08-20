@@ -1,4 +1,4 @@
-import 'package:ai_os/core/result.dart';
+﻿import 'package:ai_os/core/result.dart';
 import 'package:ai_os/tools/windows/control/window_controller.dart';
 
 final class MockWindowController implements WindowController {
@@ -47,3 +47,4 @@ final class MockWindowController implements WindowController {
     return Result.success(receipt);
   }
 }
+

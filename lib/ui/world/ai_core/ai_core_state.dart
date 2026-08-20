@@ -1,4 +1,4 @@
-enum AiCoreState {
+﻿enum AiCoreState {
   idle,
   listening,
   thinking,
@@ -17,3 +17,4 @@ extension AiCoreQualityValue on AiCoreQuality {
     AiCoreQuality.high => 2,
   };
 }
+

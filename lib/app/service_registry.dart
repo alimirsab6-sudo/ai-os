@@ -1,4 +1,4 @@
-/// Minimal type-based service registry for the application composition root.
+﻿/// Minimal type-based service registry for the application composition root.
 final class ServiceRegistry {
   final Map<Type, Object> _services = {};
 
@@ -12,3 +12,4 @@ final class ServiceRegistry {
     return service as T;
   }
 }
+

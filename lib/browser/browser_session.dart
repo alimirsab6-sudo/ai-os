@@ -1,4 +1,4 @@
-import '../core/result.dart';
+﻿import '../core/result.dart';
 import 'chrome/chrome_profile.dart';
 
 final class BrowserSession {
@@ -23,3 +23,4 @@ final class BrowserSession {
 
   void clear() => _selectedProfile = null;
 }
+

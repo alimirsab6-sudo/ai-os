@@ -1,4 +1,4 @@
-import '../../browser/browser_url_launcher.dart';
+﻿import '../../browser/browser_url_launcher.dart';
 import '../../core/events/app_event.dart';
 import '../../core/events/event_bus.dart';
 import '../../core/result.dart';
@@ -123,3 +123,4 @@ final class OpenUrlTool extends AuthorizedTool {
     Failure('Validated URL is missing.', code: 'invalid_tool_state'),
   );
 }
+

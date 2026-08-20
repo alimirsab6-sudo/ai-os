@@ -1,4 +1,4 @@
-import 'package:ai_os/agents/browser_agent/browser_agent.dart';
+﻿import 'package:ai_os/agents/browser_agent/browser_agent.dart';
 import 'package:ai_os/ai/model_provider/mock_model_provider.dart';
 import 'package:ai_os/browser/browser_session.dart';
 import 'package:ai_os/browser/chrome/chrome_profile_tools.dart';
@@ -210,3 +210,4 @@ final class _ShellHarness {
     await events.close();
   }
 }
+

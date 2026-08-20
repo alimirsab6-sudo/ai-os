@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import '../core/result.dart';
 import '../tools/windows/applications/application_descriptor.dart';
@@ -53,3 +53,4 @@ final class WindowsBrowserUrlLauncher implements BrowserUrlLauncher {
     return applications.resolve('chrome');
   }
 }
+

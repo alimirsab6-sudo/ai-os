@@ -1,4 +1,4 @@
-import 'package:ai_os/core/result.dart';
+﻿import 'package:ai_os/core/result.dart';
 import 'package:ai_os/core/security/permission.dart';
 import 'package:ai_os/tools/tool.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,3 +53,4 @@ void main() {
     expect(result.isFailure, isTrue);
   });
 }
+

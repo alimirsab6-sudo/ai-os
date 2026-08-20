@@ -1,4 +1,4 @@
-import '../core/result.dart';
+﻿import '../core/result.dart';
 import '../core/security/permission.dart';
 import 'tool.dart';
 
@@ -20,3 +20,4 @@ abstract base class PlaceholderTool extends AuthorizedTool {
         ),
       );
 }
+

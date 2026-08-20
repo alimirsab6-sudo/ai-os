@@ -1,4 +1,4 @@
-import '../../core/events/app_event.dart';
+﻿import '../../core/events/app_event.dart';
 import '../../core/events/event_bus.dart';
 import '../../core/result.dart';
 import '../../core/security/permission.dart';
@@ -208,3 +208,4 @@ final class SetUiElementValueTool extends AuthorizedTool {
     'element_id': input['element_id'],
   };
 }
+

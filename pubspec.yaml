@@ -8,12 +8,12 @@ environment:
 
 dependencies:
   audioplayers: ^6.8.1
+  camera: ^0.12.0+2
+  camera_windows: ^0.2.6+4
   ffi: ^2.2.0
   flutter:
     sdk: flutter
   path_provider: ^2.1.6
-  record: ^7.1.1
-  sherpa_onnx: ^1.13.6
   webview_flutter_windows: 1.1.1
 
 dev_dependencies:
@@ -25,3 +25,4 @@ flutter:
   uses-material-design: true
   shaders:
     - lib/ui/world/ai_core/shaders/living_ai_core.frag
+

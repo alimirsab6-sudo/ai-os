@@ -1,4 +1,4 @@
-import '../../browser/browser_context.dart';
+﻿import '../../browser/browser_context.dart';
 import '../../core/events/app_event.dart';
 import '../../core/events/event_bus.dart';
 import '../../core/result.dart';
@@ -223,3 +223,4 @@ final class InspectBrowserContextTool extends AuthorizedTool {
     'max_elements': input['max_elements'],
   };
 }
+

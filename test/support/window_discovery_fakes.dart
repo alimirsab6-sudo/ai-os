@@ -1,4 +1,4 @@
-import 'package:ai_os/core/result.dart';
+﻿import 'package:ai_os/core/result.dart';
 import 'package:ai_os/tools/windows/discovery/window_discovery.dart';
 import 'package:ai_os/tools/windows/discovery/window_info.dart';
 
@@ -38,3 +38,4 @@ final class MockWindowDiscovery implements WindowDiscovery {
     return activeResult;
   }
 }
+

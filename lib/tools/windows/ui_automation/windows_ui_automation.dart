@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:collection';
 import 'dart:ffi';
 import 'dart:isolate';
@@ -1297,3 +1297,4 @@ typedef _SafeArrayGetElementDart =
     );
 typedef _SafeArrayDestroyNative = Int32 Function(Pointer<Void> array);
 typedef _SafeArrayDestroyDart = int Function(Pointer<Void> array);
+

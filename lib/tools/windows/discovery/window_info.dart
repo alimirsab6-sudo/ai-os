@@ -1,4 +1,4 @@
-/// Platform-neutral snapshot of a top-level application window.
+﻿/// Platform-neutral snapshot of a top-level application window.
 final class WindowInfo {
   const WindowInfo({
     required this.id,
@@ -34,3 +34,4 @@ final class WindowInfo {
     'is_active': isActive,
   };
 }
+

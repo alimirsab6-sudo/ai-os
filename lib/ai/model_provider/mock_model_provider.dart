@@ -1,4 +1,4 @@
-import '../../core/result.dart';
+﻿import '../../core/result.dart';
 import 'model_provider.dart';
 
 /// Deterministic provider for development and offline tests.
@@ -27,3 +27,4 @@ final class MockModelProvider implements ModelProvider {
     );
   }
 }
+

@@ -1,4 +1,4 @@
-import 'package:ai_os/core/events/event_bus.dart';
+﻿import 'package:ai_os/core/events/event_bus.dart';
 import 'package:ai_os/core/result.dart';
 import 'package:ai_os/core/security/permission.dart';
 import 'package:ai_os/tools/tool.dart';
@@ -126,3 +126,4 @@ void main() {
     await events.close();
   });
 }
+

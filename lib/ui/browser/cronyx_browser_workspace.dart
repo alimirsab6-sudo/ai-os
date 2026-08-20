@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -208,7 +208,7 @@ class _CronyxBrowserWorkspaceState extends State<CronyxBrowserWorkspace> {
                       isDense: true,
                       hintText: _state.isInitialized
                           ? 'https://example.com'
-                          : 'Initializing CronyX Browser…',
+                          : 'Initializing CronyX Browserâ€¦',
                       hintStyle: TextStyle(color: palette.muted, fontSize: 12),
                       errorText: _addressError,
                       errorStyle: TextStyle(color: palette.error, fontSize: 9),
@@ -290,3 +290,4 @@ class _ToolbarButton extends StatelessWidget {
     visualDensity: VisualDensity.compact,
   );
 }
+

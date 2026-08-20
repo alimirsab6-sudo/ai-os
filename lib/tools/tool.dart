@@ -1,4 +1,4 @@
-import '../core/result.dart';
+﻿import '../core/result.dart';
 import '../core/security/permission.dart';
 
 enum ToolValueType { string, number, boolean, object, array }
@@ -94,3 +94,4 @@ abstract base class AuthorizedTool implements Tool {
   void onFailedWithInput(Failure failure, Map<String, Object?> input) =>
       onFailed(failure);
 }
+

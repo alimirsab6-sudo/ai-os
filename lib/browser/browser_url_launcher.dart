@@ -1,4 +1,4 @@
-import '../core/result.dart';
+﻿import '../core/result.dart';
 
 final class BrowserUrlLaunchReceipt {
   const BrowserUrlLaunchReceipt({required this.host, this.processId});
@@ -10,3 +10,4 @@ final class BrowserUrlLaunchReceipt {
 abstract interface class BrowserUrlLauncher {
   Future<Result<BrowserUrlLaunchReceipt>> launch(Uri url);
 }
+

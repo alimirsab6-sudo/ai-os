@@ -1,4 +1,4 @@
-import '../../core/result.dart';
+﻿import '../../core/result.dart';
 import '../../tools/windows/applications/application_registry.dart';
 import 'chrome_installation_resolver.dart';
 
@@ -40,3 +40,4 @@ final class WindowsChromeInstallationResolver
     );
   }
 }
+

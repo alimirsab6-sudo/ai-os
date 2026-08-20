@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
@@ -297,3 +297,4 @@ final class WindowsWebView2Surface extends StatelessWidget {
     permissionRequested: (_, _, _) async => WebviewPermissionDecision.deny,
   );
 }
+

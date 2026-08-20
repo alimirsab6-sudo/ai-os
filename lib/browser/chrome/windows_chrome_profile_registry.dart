@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io';
 
 import '../../core/result.dart';
@@ -184,3 +184,4 @@ bool _isSafeDirectoryIdentifier(String value) =>
     value != '.' &&
     value != '..' &&
     !value.contains(RegExp(r'[\\/:*?"<>|]'));
+

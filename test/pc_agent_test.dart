@@ -1,4 +1,4 @@
-import 'package:ai_os/agents/agent.dart';
+﻿import 'package:ai_os/agents/agent.dart';
 import 'package:ai_os/agents/pc_agent/pc_agent.dart';
 import 'package:ai_os/core/events/event_bus.dart';
 import 'package:ai_os/core/security/permission.dart';
@@ -30,3 +30,4 @@ void main() {
     await events.close();
   });
 }
+

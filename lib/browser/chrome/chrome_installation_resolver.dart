@@ -1,4 +1,4 @@
-import '../../core/result.dart';
+﻿import '../../core/result.dart';
 
 final class ResolvedChromeInstallation {
   const ResolvedChromeInstallation({required this.executablePath});
@@ -9,3 +9,4 @@ final class ResolvedChromeInstallation {
 abstract interface class ChromeInstallationResolver {
   Result<ResolvedChromeInstallation> resolve();
 }
+

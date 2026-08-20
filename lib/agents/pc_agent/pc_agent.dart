@@ -1,4 +1,4 @@
-import '../../core/result.dart';
+﻿import '../../core/result.dart';
 import '../../core/security/permission.dart';
 import '../../tools/tool.dart';
 import '../../tools/windows/launch_application_tool.dart';
@@ -133,3 +133,4 @@ final class PcAgent implements Agent {
     );
   }
 }
+

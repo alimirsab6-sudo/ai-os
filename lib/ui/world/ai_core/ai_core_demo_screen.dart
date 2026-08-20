@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -289,3 +289,4 @@ class _ControlButton extends StatelessWidget {
     child: Text(label),
   );
 }
+

@@ -1,4 +1,4 @@
-import 'package:ai_os/core/events/event_bus.dart';
+﻿import 'package:ai_os/core/events/event_bus.dart';
 import 'package:ai_os/core/events/app_event.dart';
 import 'package:ai_os/core/security/permission.dart';
 import 'package:ai_os/tools/tool.dart';
@@ -203,3 +203,4 @@ WindowControlTool _toolFor(
     events: events,
   ),
 };
+

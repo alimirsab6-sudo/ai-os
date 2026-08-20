@@ -1,4 +1,4 @@
-import '../core/result.dart';
+﻿import '../core/result.dart';
 
 abstract interface class MemoryStore {
   Future<Result<void>> store(String key, Object value);
@@ -30,3 +30,4 @@ final class InMemoryStore implements MemoryStore {
     return const Result.success(null);
   }
 }
+

@@ -1,4 +1,4 @@
-import 'package:ai_os/agents/agent.dart';
+﻿import 'package:ai_os/agents/agent.dart';
 import 'package:ai_os/agents/browser_agent/browser_agent.dart';
 import 'package:ai_os/ai/model_provider/model_provider.dart';
 import 'package:ai_os/browser/browser_session.dart';
@@ -387,3 +387,4 @@ BrowserAgent _agent(EventBus events, InspectBrowserContextTool tool) {
     inspectBrowserContextTool: tool,
   );
 }
+

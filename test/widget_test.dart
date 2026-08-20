@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:ai_os/agents/pc_agent/pc_agent.dart';
 import 'package:ai_os/ai/model_provider/mock_model_provider.dart';
@@ -94,7 +94,6 @@ Widget _desktopShell({
       child: CronyxOsShell(
         orchestrator: orchestrator,
         onCoreStateChanged: onCoreStateChanged,
-        speechSynthesizer: speechSynthesizer,
       ),
     ),
   ),
@@ -407,3 +406,4 @@ void main() {
     await _disposeShell(tester, events);
   });
 }
+

@@ -1,4 +1,4 @@
-import '../placeholder_tool.dart';
+﻿import '../placeholder_tool.dart';
 
 final class TerminalToolPlaceholder extends PlaceholderTool {
   const TerminalToolPlaceholder();
@@ -12,3 +12,4 @@ final class TerminalToolPlaceholder extends PlaceholderTool {
   @override
   String get description => 'Reserved boundary for future terminal execution.';
 }
+

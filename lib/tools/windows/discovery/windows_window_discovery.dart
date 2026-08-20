@@ -1,4 +1,4 @@
-import 'dart:ffi';
+﻿import 'dart:ffi';
 import 'dart:io';
 
 import 'package:ffi/ffi.dart';
@@ -307,3 +307,4 @@ final class _WindowsApi {
   final _QueryProcessImageNameDart queryFullProcessImageName;
   final _CloseHandleDart closeHandle;
 }
+

@@ -1,4 +1,4 @@
-import '../../../core/result.dart';
+﻿import '../../../core/result.dart';
 import 'application_descriptor.dart';
 
 abstract interface class ApplicationRegistry {
@@ -7,3 +7,4 @@ abstract interface class ApplicationRegistry {
   List<ApplicationDescriptor> listKnownApplications();
   Result<ResolvedApplication> resolve(String applicationId);
 }
+

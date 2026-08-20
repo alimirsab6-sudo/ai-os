@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 /// Locates the application-owned local model runtime without scanning the
 /// filesystem or relying solely on the process working directory.
@@ -51,3 +51,4 @@ bool _containsLocalRuntime(String root) {
         '${separator}af_bella.bin',
       ).existsSync();
 }
+

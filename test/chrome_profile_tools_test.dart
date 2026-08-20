@@ -1,4 +1,4 @@
-import 'package:ai_os/browser/browser_session.dart';
+﻿import 'package:ai_os/browser/browser_session.dart';
 import 'package:ai_os/browser/chrome/chrome_profile_tools.dart';
 import 'package:ai_os/core/events/app_event.dart';
 import 'package:ai_os/core/events/event_bus.dart';
@@ -113,3 +113,4 @@ void main() {
     await events.close();
   });
 }
+

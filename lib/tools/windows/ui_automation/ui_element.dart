@@ -1,4 +1,4 @@
-enum UiControlType {
+﻿enum UiControlType {
   window,
   button,
   edit,
@@ -129,3 +129,4 @@ final class UiInspectionResult {
     'was_truncated': wasTruncated,
   };
 }
+

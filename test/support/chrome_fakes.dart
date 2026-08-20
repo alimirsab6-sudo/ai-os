@@ -1,4 +1,4 @@
-import 'package:ai_os/browser/chrome/chrome_installation_resolver.dart';
+﻿import 'package:ai_os/browser/chrome/chrome_installation_resolver.dart';
 import 'package:ai_os/browser/chrome/chrome_launcher.dart';
 import 'package:ai_os/browser/chrome/chrome_profile.dart';
 import 'package:ai_os/browser/chrome/chrome_profile_registry.dart';
@@ -88,3 +88,4 @@ final class MockChromeLauncher implements ChromeLauncher {
     );
   }
 }
+

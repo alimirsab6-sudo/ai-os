@@ -4,13 +4,12 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
-  record_windows
+  camera_windows
   webview_flutter_windows
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
   jni
-  sherpa_onnx_windows
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

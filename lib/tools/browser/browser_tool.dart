@@ -1,4 +1,4 @@
-import '../placeholder_tool.dart';
+﻿import '../placeholder_tool.dart';
 
 final class BrowserToolPlaceholder extends PlaceholderTool {
   const BrowserToolPlaceholder();
@@ -12,3 +12,4 @@ final class BrowserToolPlaceholder extends PlaceholderTool {
   @override
   String get description => 'Reserved boundary for future browser automation.';
 }
+

@@ -1,4 +1,4 @@
-import 'package:ai_os/ai/model_provider/mock_model_provider.dart';
+﻿import 'package:ai_os/ai/model_provider/mock_model_provider.dart';
 import 'package:ai_os/core/events/event_bus.dart';
 import 'package:ai_os/core/orchestrator/orchestrator.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,3 +42,4 @@ void main() {
     },
   );
 }
+

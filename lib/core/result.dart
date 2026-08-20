@@ -1,4 +1,4 @@
-/// Details about an operation that could not be completed.
+﻿/// Details about an operation that could not be completed.
 final class Failure {
   const Failure(this.message, {this.code});
 
@@ -39,3 +39,4 @@ final class Failed<T> extends Result<T> {
 
   final Failure failure;
 }
+

@@ -1,4 +1,4 @@
-import 'package:ai_os/tools/windows/ui_automation/ui_element.dart';
+﻿import 'package:ai_os/tools/windows/ui_automation/ui_element.dart';
 import 'package:ai_os/tools/windows/ui_automation/windows_ui_automation_mappings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -61,3 +61,4 @@ void main() {
     expect(WindowsUiAutomationMappings.patternFromId(99999), isNull);
   });
 }
+

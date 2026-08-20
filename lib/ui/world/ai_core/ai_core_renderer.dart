@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/scheduler.dart';
@@ -568,3 +568,4 @@ double _hash1(double n) {
   final x = math.sin(n * 127.1 + 311.7) * 43758.5453123;
   return x - x.floorToDouble();
 }
+

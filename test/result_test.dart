@@ -1,4 +1,4 @@
-import 'package:ai_os/core/result.dart';
+﻿import 'package:ai_os/core/result.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -16,3 +16,4 @@ void main() {
     expect(result.fold((_) => '', (failure) => failure.code), 'missing');
   });
 }
+

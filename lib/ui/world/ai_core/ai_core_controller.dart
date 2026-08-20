@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 
 import 'ai_core_state.dart';
 
@@ -65,3 +65,4 @@ final class AiCoreController extends ChangeNotifier {
     notifyListeners();
   }
 }
+

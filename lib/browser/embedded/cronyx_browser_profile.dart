@@ -1,4 +1,4 @@
-import '../../core/result.dart';
+﻿import '../../core/result.dart';
 
 final class CronyxBrowserProfile {
   const CronyxBrowserProfile._();
@@ -16,3 +16,4 @@ final class CronyxBrowserProfile {
     return Result.success('$localAppData\\CronyX\\Browser\\Profile');
   }
 }
+

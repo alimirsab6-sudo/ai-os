@@ -1,4 +1,4 @@
-import '../core/result.dart';
+﻿import '../core/result.dart';
 import '../tools/tool.dart';
 
 sealed class AgentRequest {
@@ -143,3 +143,4 @@ abstract interface class Agent {
 
   Future<Result<AgentResponse>> handle(AgentRequest request);
 }
+

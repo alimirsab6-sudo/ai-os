@@ -1,4 +1,4 @@
-import '../../agents/agent.dart';
+﻿import '../../agents/agent.dart';
 import '../../agents/browser_agent/browser_agent.dart';
 import '../../agents/pc_agent/pc_agent.dart';
 import '../../agents/voice_agent/voice_agent.dart';
@@ -229,18 +229,41 @@ final class DeterministicCommandInterpreter implements CommandInterpreter {
     }
 
     final lower = normalized.toLowerCase();
+
+    // Voice enrollment commands.
+    //
+    // Accept natural variations because STT may add/remove words such as
+    // "please", "I want to", or punctuation.
+    String? enrollmentName;
+
     final enrollment = RegExp(
-      r'^enroll (?:my )?voice as (.+)$',
+      r'(?:^|\b)(?:please\s+)?(?:i\s+(?:want|would like)\s+to\s+)?enroll\s+(?:my\s+)?voice(?:\s+as\s+(.+))?$',
       caseSensitive: false,
     ).firstMatch(normalized);
+
     if (enrollment != null) {
-      final displayName = enrollment.group(1)!.trim();
-      if (displayName.isEmpty || displayName.length > 40) {
+      enrollmentName = enrollment.group(1)?.trim();
+    } else if (RegExp(
+      r'^(?:please\s+)?enroll\s+voice$',
+      caseSensitive: false,
+    ).hasMatch(normalized)) {
+      enrollmentName = null;
+    }
+
+    if (enrollmentName != null || enrollment != null) {
+      final ownerName = (enrollmentName == null || enrollmentName.isEmpty)
+          ? 'Ali'
+          : enrollmentName;
+
+      if (ownerName.length > 40) {
         return const Result.failure(
           Failure('Enter a valid owner name.', code: 'invalid_owner_name'),
         );
       }
-      return Result.success(EnrollOwnerVoiceCommand(displayName: displayName));
+
+      return Result.success(
+        EnrollOwnerVoiceCommand(displayName: ownerName),
+      );
     }
     if (lower == 'reset voice profile' || lower == 'reset owner voice') {
       return const Result.success(ResetOwnerVoiceProfileCommand());
@@ -354,14 +377,20 @@ final class Orchestrator {
     if (interpreter != null) {
       final interpreted = interpreter.interpret(userRequest);
       if (interpreted case Failed<OrchestratorCommand>(:final failure)) {
-        events.publish(
-          ApplicationEvent(
-            type: 'orchestrator.request.rejected',
-            occurredAt: DateTime.now().toUtc(),
-            data: {'failure_code': failure.code},
-          ),
-        );
-        return Result.failure(failure);
+        // Natural language that is not a deterministic OS command belongs to
+        // the local model. Controlled command failures (for example an invalid
+        // URL) still remain hard failures and never get silently reinterpreted.
+        if (failure.code != 'unsupported_command') {
+          events.publish(
+            ApplicationEvent(
+              type: 'orchestrator.request.rejected',
+              occurredAt: DateTime.now().toUtc(),
+              data: {'failure_code': failure.code},
+            ),
+          );
+          return Result.failure(failure);
+        }
+        return _generateModelResponse(userRequest);
       }
       final command = (interpreted as Success<OrchestratorCommand>).value;
       events.publish(
@@ -373,6 +402,12 @@ final class Orchestrator {
       );
       return executeCommand(command);
     }
+    return _generateModelResponse(userRequest);
+  }
+
+  Future<Result<OrchestratorResponse>> _generateModelResponse(
+    String userRequest,
+  ) async {
     final providerResult = await modelProvider.generate(
       ModelRequest(
         messages: [
@@ -721,3 +756,7 @@ final class Orchestrator {
     ),
   );
 }
+
+
+
+

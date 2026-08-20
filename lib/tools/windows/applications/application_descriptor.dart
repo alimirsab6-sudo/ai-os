@@ -1,4 +1,4 @@
-enum ExecutableResolutionStrategy { windowsKnownLocations }
+﻿enum ExecutableResolutionStrategy { windowsKnownLocations }
 
 enum ApplicationLaunchStrategy { directProcess, windowsRunAs }
 
@@ -42,3 +42,4 @@ final class ResolvedApplication {
   final ApplicationDescriptor descriptor;
   final String executablePath;
 }
+

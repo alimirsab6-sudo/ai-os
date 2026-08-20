@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -110,3 +110,4 @@ final class _CronyxBrowserPrototypeState extends State<CronyxBrowserPrototype> {
     );
   }
 }
+

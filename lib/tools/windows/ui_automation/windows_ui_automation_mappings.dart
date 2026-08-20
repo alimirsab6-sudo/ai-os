@@ -1,4 +1,4 @@
-import 'ui_element.dart';
+﻿import 'ui_element.dart';
 
 final class WindowsUiAutomationMappings {
   const WindowsUiAutomationMappings._();
@@ -51,3 +51,4 @@ final class WindowsUiAutomationMappings {
     10015,
   ];
 }
+

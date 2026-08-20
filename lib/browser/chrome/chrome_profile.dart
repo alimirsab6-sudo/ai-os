@@ -1,4 +1,4 @@
-final class ChromeProfile {
+﻿final class ChromeProfile {
   const ChromeProfile({
     required this.id,
     required this.displayName,
@@ -29,3 +29,4 @@ final class ResolvedChromeProfile {
 
   String get directoryIdentifier => profile.directoryIdentifier;
 }
+
