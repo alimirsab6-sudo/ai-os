@@ -5,7 +5,8 @@ final class FaceCameraService {
 
   CameraController? get controller => _controller;
 
-  bool get isInitialized => _controller?.value.isInitialized ?? false;
+  bool get isInitialized =>
+      _controller?.value.isInitialized ?? false;
 
   Future<CameraController> initialize() async {
     final cameras = await availableCameras();
@@ -32,11 +33,13 @@ final class FaceCameraService {
     await controller.initialize();
 
     _controller = controller;
+
     return controller;
   }
 
   Future<void> dispose() async {
     final controller = _controller;
+
     _controller = null;
 
     if (controller != null) {

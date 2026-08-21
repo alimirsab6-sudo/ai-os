@@ -49,3 +49,5 @@ app.*.map.json
 ai-os.zip
 
 ai-os.zip
+
+runtime/kokoro/output/bridge/cache/
