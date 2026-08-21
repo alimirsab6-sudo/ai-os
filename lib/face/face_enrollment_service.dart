@@ -1,7 +1,6 @@
 ﻿import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-
 import 'package:camera/camera.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,9 +14,7 @@ final class FaceEnrollmentService {
   static const double verificationThreshold = 0.78;
 
   Future<void> initialize() async {
-    if (_detector != null && _detector!.isReady) {
-      return;
-    }
+    if (_detector != null && _detector!.isReady) return;
 
     _detector = FaceDetector();
 
@@ -30,13 +27,15 @@ final class FaceEnrollmentService {
 
   Future<FaceEnrollmentResult> enroll(
     CameraController controller, {
-    int requiredSamples = 5,
+    int requiredSamples = 3,
     void Function(int current, int total)? onProgress,
   }) async {
     await initialize();
 
     if (!controller.value.isInitialized) {
-      return const FaceEnrollmentResult.failure('Camera is not initialized.');
+      return const FaceEnrollmentResult.failure(
+        'Camera is not initialized.',
+      );
     }
 
     if (_running) {
@@ -51,8 +50,6 @@ final class FaceEnrollmentService {
       final embeddings = <List<double>>[];
 
       for (var sample = 0; sample < requiredSamples; sample++) {
-        await Future<void>.delayed(const Duration(milliseconds: 450));
-
         if (!controller.value.isInitialized) {
           return const FaceEnrollmentResult.failure(
             'Camera stopped during enrollment.',
@@ -62,9 +59,7 @@ final class FaceEnrollmentService {
         final picture = await controller.takePicture();
         final bytes = await picture.readAsBytes();
 
-        final detector = _detector!;
-
-        final faces = await detector.detectFacesFromBytes(
+        final faces = await _detector!.detectFacesFromBytes(
           bytes,
           mode: FaceDetectionMode.full,
         );
@@ -91,9 +86,14 @@ final class FaceEnrollmentService {
           );
         }
 
-        final embedding = await detector.getFaceEmbedding(face, bytes);
+        final embedding = await _detector!.getFaceEmbedding(
+          face,
+          bytes,
+        );
 
-        embeddings.add(embedding.map((value) => value.toDouble()).toList());
+        embeddings.add(
+          embedding.map((value) => value.toDouble()).toList(),
+        );
 
         onProgress?.call(sample + 1, requiredSamples);
       }
@@ -127,7 +127,9 @@ final class FaceEnrollmentService {
 
       return FaceEnrollmentResult.success(average);
     } catch (error) {
-      return FaceEnrollmentResult.failure('Face enrollment failed: $error');
+      return FaceEnrollmentResult.failure(
+        'Face enrollment failed: $error',
+      );
     } finally {
       _running = false;
     }
@@ -136,13 +138,15 @@ final class FaceEnrollmentService {
   Future<FaceVerificationResult> verify(
     CameraController controller,
     List<double> enrolledEmbedding, {
-    int samples = 3,
+    int samples = 1,
     void Function(int current, int total)? onProgress,
   }) async {
     await initialize();
 
     if (!controller.value.isInitialized) {
-      return const FaceVerificationResult.failure('Camera is not initialized.');
+      return const FaceVerificationResult.failure(
+        'Camera is not initialized.',
+      );
     }
 
     if (_running) {
@@ -157,8 +161,6 @@ final class FaceEnrollmentService {
       final embeddings = <List<double>>[];
 
       for (var sample = 0; sample < samples; sample++) {
-        await Future<void>.delayed(const Duration(milliseconds: 350));
-
         final picture = await controller.takePicture();
         final bytes = await picture.readAsBytes();
 
@@ -169,7 +171,9 @@ final class FaceEnrollmentService {
 
         if (faces.length != 1) {
           return FaceVerificationResult.failure(
-            faces.isEmpty ? 'No face detected.' : 'Multiple faces detected.',
+            faces.isEmpty
+                ? 'No face detected.'
+                : 'Multiple faces detected.',
           );
         }
 
@@ -181,9 +185,14 @@ final class FaceEnrollmentService {
           );
         }
 
-        final embedding = await _detector!.getFaceEmbedding(face, bytes);
+        final embedding = await _detector!.getFaceEmbedding(
+          face,
+          bytes,
+        );
 
-        embeddings.add(embedding.map((value) => value.toDouble()).toList());
+        embeddings.add(
+          embedding.map((value) => value.toDouble()).toList(),
+        );
 
         onProgress?.call(sample + 1, samples);
       }
@@ -199,7 +208,9 @@ final class FaceEnrollmentService {
             : 'Identity not recognized.',
       );
     } catch (error) {
-      return FaceVerificationResult.failure('Face verification failed: $error');
+      return FaceVerificationResult.failure(
+        'Face verification failed: $error',
+      );
     } finally {
       _running = false;
     }
@@ -208,7 +219,10 @@ final class FaceEnrollmentService {
   List<double> _centroid(List<List<double>> values) {
     if (values.isEmpty) return const [];
 
-    final result = List<double>.filled(values.first.length, 0);
+    final result = List<double>.filled(
+      values.first.length,
+      0,
+    );
 
     for (final value in values) {
       for (var index = 0; index < result.length; index++) {
@@ -223,7 +237,10 @@ final class FaceEnrollmentService {
     return result;
   }
 
-  double _cosine(List<double> left, List<double> right) {
+  double _cosine(
+    List<double> left,
+    List<double> right,
+  ) {
     if (left.length != right.length || left.isEmpty) {
       return -1;
     }
@@ -238,11 +255,10 @@ final class FaceEnrollmentService {
       rightNorm += right[index] * right[index];
     }
 
-    if (leftNorm == 0 || rightNorm == 0) {
-      return -1;
-    }
+    if (leftNorm == 0 || rightNorm == 0) return -1;
 
-    return dot / (math.sqrt(leftNorm) * math.sqrt(rightNorm));
+    return dot /
+        (math.sqrt(leftNorm) * math.sqrt(rightNorm));
   }
 
   Future<bool> hasEnrollment() async {
@@ -256,7 +272,9 @@ final class FaceEnrollmentService {
 
       if (!await file.exists()) return null;
 
-      final decoded = jsonDecode(await file.readAsString());
+      final decoded = jsonDecode(
+        await file.readAsString(),
+      );
 
       if (decoded is! Map) return null;
 
@@ -264,7 +282,9 @@ final class FaceEnrollmentService {
 
       if (values is! List) return null;
 
-      return values.map((value) => (value as num).toDouble()).toList();
+      return values
+          .map((value) => (value as num).toDouble())
+          .toList();
     } catch (_) {
       return null;
     }
@@ -283,7 +303,9 @@ final class FaceEnrollmentService {
     _detector = null;
   }
 
-  Future<void> _saveIdentity(List<double> embedding) async {
+  Future<void> _saveIdentity(
+    List<double> embedding,
+  ) async {
     final file = await _identityFile();
 
     await file.parent.create(recursive: true);
@@ -299,7 +321,8 @@ final class FaceEnrollmentService {
   }
 
   Future<File> _identityFile() async {
-    final directory = await getApplicationSupportDirectory();
+    final directory =
+        await getApplicationSupportDirectory();
 
     return File(
       '${directory.path}${Platform.pathSeparator}'
@@ -317,11 +340,19 @@ final class FaceEnrollmentResult {
     this.message,
   });
 
-  const FaceEnrollmentResult.success(List<double> embedding)
-    : this._(success: true, embedding: embedding);
+  const FaceEnrollmentResult.success(
+    List<double> embedding,
+  ) : this._(
+        success: true,
+        embedding: embedding,
+      );
 
-  const FaceEnrollmentResult.failure(String message)
-    : this._(success: false, message: message);
+  const FaceEnrollmentResult.failure(
+    String message,
+  ) : this._(
+        success: false,
+        message: message,
+      );
 
   final bool success;
   final List<double>? embedding;
@@ -335,11 +366,15 @@ final class FaceVerificationResult {
     required this.message,
   });
 
-  const FaceVerificationResult.failure(String message)
-    : this(matched: false, score: -1, message: message);
+  const FaceVerificationResult.failure(
+    String message,
+  ) : this(
+        matched: false,
+        score: -1,
+        message: message,
+      );
 
   final bool matched;
   final double score;
   final String message;
 }
-

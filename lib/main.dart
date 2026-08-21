@@ -16,6 +16,8 @@ Future<void> main() async {
   const windowOptions = WindowOptions(
     fullScreen: false,
     title: 'CronyX AI OS',
+    titleBarStyle: TitleBarStyle.hidden,
+    windowButtonVisibility: false,
   );
 
   await windowManager.waitUntilReadyToShow(
@@ -41,5 +43,6 @@ Future<void> main() async {
     ),
   );
 }
+
 
 
