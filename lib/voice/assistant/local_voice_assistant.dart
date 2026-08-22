@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -31,6 +31,10 @@ final class UnknownSpeakerSessionEvent {
 }
 
 final class LocalVoiceAssistant implements VoiceAssistant {
+  static const double _verificationThreshold = 0.72;
+
+  static double get verificationThreshold => _verificationThreshold;
+
   LocalVoiceAssistant({
     required this.microphone,
     required this.runtime,
@@ -46,11 +50,16 @@ final class LocalVoiceAssistant implements VoiceAssistant {
        foundationReadiness = foundationReadiness ?? _noFoundationReadiness,
        diagnostics = diagnostics ?? _noDiagnostics;
 
-  static const verificationThreshold = 0.75;
-  static const _sampleRate = 16000;
-  static const _wakeBufferSamples = _sampleRate * 4;
-  static const _endOfSpeechSilenceSamples = _sampleRate * 3 ~/ 5;
-  static const _wakeFallbackSilenceSamples = _sampleRate * 3 ~/ 5;
+  static const int _sampleRate = 16000;
+
+  /// Minimum RMS level considered speech.
+  static const double _speechThreshold = 0.015;
+
+  /// Silence required before an utterance is submitted to STT.
+  static const int _endOfSpeechSilenceSamples = _sampleRate * 3 ~/ 5;
+
+  /// Maximum amount of audio retained for one utterance.
+  static const int _maximumUtteranceSamples = _sampleRate * 10;
 
   final MicrophoneCapture microphone;
   final LocalVoiceRuntime runtime;
@@ -64,32 +73,42 @@ final class LocalVoiceAssistant implements VoiceAssistant {
   final Stream<AppEvent>? lifecycleEvents;
 
   static Map<String, bool> _noFoundationReadiness() => const {};
+
   static void _noDiagnostics(String _) {}
 
   OwnerVoiceProfile? _profile;
-  final List<UnknownSpeakerSessionEvent> _securityEvents = [];
-  StreamSubscription<Float32List>? _wakeSubscription;
-  final List<double> _wakeBuffer = [];
-  Future<void> _wakeWork = Future.value();
-  int _wakeSession = 0;
-  int _wakeRecoveryAttempts = 0;
-  int _wakeHealthySamples = 0;
-  bool _wakeAudioObserved = false;
-  bool _wakeSpeechObserved = false;
-  bool _wakeKeywordDetected = false;
-  int _wakeSilenceSamples = 0;
-  int _wakeNoiseCalibrationSamples = 0;
-  double _wakeNoiseFloor = 0.005;
-  bool _wakeMonitoring = false;
-  bool _handlingWake = false;
+
+  final List<UnknownSpeakerSessionEvent> _securityEvents =
+      <UnknownSpeakerSessionEvent>[];
+
+  StreamSubscription<Float32List>? _microphoneSubscription;
+
+  final List<double> _speechBuffer = <double>[];
+
+  Future<void> _voiceWork = Future<void>.value();
+
+  StreamSubscription<AppEvent>? _lifecycleSubscription;
+  Future<void> _lifecycleWork = Future<void>.value();
+
+  bool _speechDetected = false;
+  int _silenceSamples = 0;
+
+  bool _listening = false;
+  bool _handlingSpeech = false;
+
+  /*
+   * Kept for compatibility with the existing VoiceAssistant interface.
+   *
+   * Normal voice commands do NOT require speaker verification.
+   */
   bool _ownerVerified = false;
+
   bool _initialized = false;
   bool _disposed = false;
   bool _startupGreetingDelivered = false;
+  bool _resumeListeningAfterSpeech = false;
+
   Future<Result<void>>? _initialization;
-  StreamSubscription<AppEvent>? _lifecycleSubscription;
-  Future<void> _lifecycleWork = Future.value();
-  bool _resumeWakeAfterSpeech = false;
 
   @override
   bool get hasOwnerProfile => _profile != null;
@@ -98,30 +117,48 @@ final class LocalVoiceAssistant implements VoiceAssistant {
   bool get ownerVerified => _ownerVerified;
 
   @override
-  bool get wakeMonitoring => _wakeMonitoring;
+  bool get wakeMonitoring => _listening;
 
   @override
   Future<Result<void>> initialize() {
-    if (_initialized) return Future.value(const Result.success(null));
-    if (_disposed) {
-      return Future.value(_failure('voice_disposed', 'Voice is unavailable.'));
+    if (_initialized) {
+      return Future<Result<void>>.value(const Result.success(null));
     }
+
+    if (_disposed) {
+      return Future<Result<void>>.value(
+        _failure('voice_disposed', 'Voice is unavailable.'),
+      );
+    }
+
     final current = _initialization;
-    if (current != null) return current;
+
+    if (current != null) {
+      return current;
+    }
+
     final task = _initialize();
+
     _initialization = task;
+
     unawaited(
       task.then((result) {
-        if (result.isFailure) _initialization = null;
+        if (result.isFailure) {
+          _initialization = null;
+        }
       }),
     );
+
     return task;
   }
 
   Future<Result<void>> _initialize() async {
     _lifecycleSubscription ??= lifecycleEvents?.listen(_onLifecycleEvent);
+
     _publish('voice.startup.started');
+
     final runtimeReady = await runtime.initialize();
+
     if (runtimeReady case Failed<void>(:final failure)) {
       _publishReadiness(
         runtimeReady: false,
@@ -129,9 +166,12 @@ final class LocalVoiceAssistant implements VoiceAssistant {
         profileReady: false,
         ttsReady: false,
       );
+
       return Result.failure(failure);
     }
+
     final ttsReady = await speech.initialize();
+
     if (ttsReady case Failed<void>(:final failure)) {
       _publishReadiness(
         runtimeReady: true,
@@ -139,60 +179,95 @@ final class LocalVoiceAssistant implements VoiceAssistant {
         profileReady: false,
         ttsReady: false,
       );
+
       return Result.failure(failure);
     }
+
     final loaded = await profiles.load();
+
     if (loaded case Failed<OwnerVoiceProfile?>(:final failure)) {
       _publishReadiness(
         runtimeReady: true,
         microphoneReady: false,
         profileReady: false,
+        ttsReady: true,
       );
+
       return Result.failure(failure);
     }
+
     _profile = (loaded as Success<OwnerVoiceProfile?>).value;
+
+    /*
+     * Perform a real microphone startup test.
+     *
+     * An owner profile is NOT required.
+     */
     final microphoneCheck = await microphone.start();
+
     final microphoneReady = microphoneCheck.isSuccess;
+
     await microphone.stop();
+
     _initialized = true;
+
     _publishReadiness(
       runtimeReady: true,
       microphoneReady: microphoneReady,
       profileReady: _profile != null,
       ttsReady: true,
     );
+
     if (!microphoneReady) {
       return _failure(
         'microphone_failed',
         'Voice input is currently unavailable.',
       );
     }
+
     final profile = _profile;
-    if (profile == null) {
-      _publish('voice.enrollment.required');
-      return const Result.success(null);
+
+    if (profile != null) {
+      final greeting = await _deliverStartupGreeting(profile.displayName);
+
+      if (greeting case Failed<void>(:final failure)) {
+        return Result.failure(failure);
+      }
+    } else {
+      _publish('voice.enrollment.optional');
     }
-    final greeting = await _deliverStartupGreeting(profile.displayName);
-    if (greeting case Failed<void>(:final failure)) {
-      return Result.failure(failure);
-    }
+
+    /*
+     * Start continuous listening.
+     *
+     * There is NO wake phrase requirement.
+     */
     return startWakeMonitoring();
   }
 
   void _onLifecycleEvent(AppEvent event) {
-    if (event.type == 'tts.playback.started' && _wakeMonitoring) {
-      _resumeWakeAfterSpeech = true;
-      _lifecycleWork = _lifecycleWork.then((_) => _stopWakeCapture());
+    /*
+     * Stop listening while TTS is speaking.
+     *
+     * This prevents CronyX from hearing its own voice.
+     */
+    if (event.type == 'tts.playback.started' && _listening) {
+      _resumeListeningAfterSpeech = true;
+
+      _lifecycleWork = _lifecycleWork.then((_) => _stopMicrophoneCapture());
+
       return;
     }
+
     if ((event.type == 'tts.playback.completed' ||
             event.type == 'tts.playback.stopped' ||
             event.type == 'tts.failed') &&
-        _resumeWakeAfterSpeech) {
-      _resumeWakeAfterSpeech = false;
+        _resumeListeningAfterSpeech) {
+      _resumeListeningAfterSpeech = false;
+
       _lifecycleWork = _lifecycleWork.then((_) async {
-        if (!_disposed && !_handlingWake && _profile != null) {
-          await _restartWakeMonitoring();
+        if (!_disposed && !_handlingSpeech) {
+          await _restartListening();
         }
       });
     }
@@ -206,9 +281,20 @@ final class LocalVoiceAssistant implements VoiceAssistant {
   }) {
     _publish('voice.startup.readiness', {
       ...foundationReadiness(),
+
       'stt': runtimeReady,
+
+      /*
+         * Speaker verification exists as a subsystem,
+         * but it does NOT block normal voice commands.
+         */
       'speaker_verification': runtimeReady,
-      'wake_phrase': runtimeReady,
+
+      /*
+         * Wake phrase is deliberately disabled.
+         */
+      'wake_phrase': false,
+
       'microphone': microphoneReady,
       'owner_profile': profileReady,
       'tts': ttsReady,
@@ -216,418 +302,528 @@ final class LocalVoiceAssistant implements VoiceAssistant {
   }
 
   Future<Result<void>> _deliverStartupGreeting(String name) async {
-    if (_startupGreetingDelivered) return const Result.success(null);
+    if (_startupGreetingDelivered) {
+      return const Result.success(null);
+    }
+
     _startupGreetingDelivered = true;
+
     final greeting = _timeGreeting(clock().hour);
+
     _publish('voice.startup.greeting', {'display_name': name});
+
     final result = await speech.speak(
-      '$greeting, $name. CronyX is online. Voice systems are ready.',
+      '$greeting, $name. CronyX is online. '
+      'Voice systems are ready.',
     );
+
     _publish('voice.startup.completed', {'audio_playback': result.isSuccess});
+
     return result;
   }
 
   static String _timeGreeting(int hour) {
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
+    if (hour < 12) {
+      return 'Good morning';
+    }
+
+    if (hour < 17) {
+      return 'Good afternoon';
+    }
+
     return 'Good evening';
   }
 
   @override
   Future<Result<void>> enrollOwner(String displayName) async {
     final normalized = displayName.trim();
+
     if (normalized.isEmpty || normalized.length > 40) {
       return _failure('invalid_owner_name', 'Enter a valid owner name.');
     }
+
     final ready = await initialize();
-    if (ready case Failed<void>(:final failure)) return Result.failure(failure);
+
+    if (ready case Failed<void>(:final failure)) {
+      return Result.failure(failure);
+    }
+
     await stopListening();
+
     _ownerVerified = false;
+
     _publish('voice.enrollment.started', {'sample_count': 3});
+
     const prompts = [
       'Please say: Hello CronyX, this is my voice.',
       'Please say: I am the primary user of this computer.',
       'Please say: CronyX, recognize my voice.',
     ];
+
     final embeddings = <Float32List>[];
+
     for (var index = 0; index < prompts.length; index++) {
       final prompt = await speech.speak(prompts[index]);
+
       if (prompt case Failed<void>(:final failure)) {
         return Result.failure(failure);
       }
+
       final captured = await _captureUtterance();
+
       if (captured case Failed<Float32List>(:final failure)) {
         _publish('voice.enrollment.failed', {'failure_code': failure.code});
+
         return Result.failure(failure);
       }
+
       final embedding = await runtime.createSpeakerEmbedding(
         (captured as Success<Float32List>).value,
       );
+
       if (embedding case Failed<Float32List>(:final failure)) {
         _publish('voice.enrollment.failed', {'failure_code': failure.code});
+
         return Result.failure(failure);
       }
+
       embeddings.add((embedding as Success<Float32List>).value);
+
       _publish('voice.enrollment.sample.completed', {'sample': index + 1});
     }
+
     final profile = OwnerVoiceProfile(
       displayName: normalized,
       embedding: _centroid(embeddings),
       createdAt: clock().toUtc(),
     );
+
     final saved = await profiles.save(profile);
-    if (saved case Failed<void>(:final failure)) return Result.failure(failure);
+
+    if (saved case Failed<void>(:final failure)) {
+      return Result.failure(failure);
+    }
+
     _profile = profile;
+
     _publish('voice.enrollment.completed', {'display_name': normalized});
-    await speech.speak('Thanks, $normalized. Your voice profile is ready.');
+
+    await speech.speak(
+      'Thanks, $normalized. '
+      'Your voice profile is ready.',
+    );
+
     return startWakeMonitoring();
   }
 
   Float32List _centroid(List<Float32List> values) {
+    if (values.isEmpty) {
+      return Float32List(0);
+    }
+
     final centroid = Float32List(values.first.length);
+
     for (final value in values) {
       for (var index = 0; index < centroid.length; index++) {
         centroid[index] += value[index];
       }
     }
+
     var norm = 0.0;
+
     for (final value in centroid) {
       norm += value * value;
     }
+
     norm = math.sqrt(norm);
+
     if (norm > 0) {
       for (var index = 0; index < centroid.length; index++) {
         centroid[index] /= norm;
       }
     }
+
     return centroid;
   }
 
   @override
   Future<Result<void>> resetOwnerProfile() async {
     await stopListening();
+
     final reset = await profiles.reset();
-    if (reset case Failed<void>(:final failure)) return Result.failure(failure);
+
+    if (reset case Failed<void>(:final failure)) {
+      return Result.failure(failure);
+    }
+
     _profile = null;
     _ownerVerified = false;
+
     _publish('voice.profile.reset');
+
+    /*
+     * Resetting the profile does NOT disable
+     * normal conversation.
+     */
+    await startWakeMonitoring();
+
     return const Result.success(null);
   }
 
+  /*
+   * The existing interface calls this
+   * startWakeMonitoring().
+   *
+   * It is now continuous listening.
+   *
+   * NO wake word is checked.
+   */
   @override
   Future<Result<void>> startWakeMonitoring() async {
-    if (_disposed) return _failure('voice_disposed', 'Voice is unavailable.');
-    if (_profile == null) {
-      return _failure(
-        'owner_not_enrolled',
-        'An owner voice profile is required.',
-      );
+    if (_disposed) {
+      return _failure('voice_disposed', 'Voice is unavailable.');
     }
-    if (_wakeMonitoring || _handlingWake) return const Result.success(null);
+
+    if (_listening || _handlingSpeech) {
+      return const Result.success(null);
+    }
+
+    diagnostics('voice.listen.start_requested');
+
     final capture = await microphone.start();
+
     if (capture case Failed<Stream<Float32List>>(:final failure)) {
+      diagnostics(
+        'voice.listen.start_failed '
+        'code=${failure.code}',
+      );
+
       return Result.failure(failure);
     }
-    final wakeReset = await runtime.resetWakePhrase();
-    if (wakeReset case Failed<void>(:final failure)) {
-      await microphone.stop();
-      return Result.failure(failure);
-    }
-    _wakeBuffer.clear();
-    _wakeAudioObserved = false;
-    _wakeSpeechObserved = false;
-    _wakeKeywordDetected = false;
-    _wakeSilenceSamples = 0;
-    _wakeNoiseCalibrationSamples = 0;
-    _wakeNoiseFloor = 0.005;
-    _wakeHealthySamples = 0;
-    final wakeSession = ++_wakeSession;
-    _wakeMonitoring = true;
-    _ownerVerified = false;
-    _publish('voice.wake.monitoring.started');
-    _wakeSubscription = (capture as Success<Stream<Float32List>>).value.listen(
-      (samples) => _onWakeSamples(samples, wakeSession),
-      onError: (_) => unawaited(
-        _recoverWakeCapture(wakeSession, 'microphone_stream_failed'),
-      ),
-      onDone: () {
-        if (wakeSession != _wakeSession) return;
-        unawaited(
-          _recoverWakeCapture(wakeSession, 'microphone_stream_stopped'),
+
+    _speechBuffer.clear();
+    _speechDetected = false;
+    _silenceSamples = 0;
+
+    final session = DateTime.now().microsecondsSinceEpoch;
+
+    _listening = true;
+
+    /*
+     * Compatibility state only.
+     *
+     * It does not authorize/deny commands.
+     */
+    _ownerVerified = true;
+
+    _publish('voice.wake.monitoring.started', {
+      'mode': 'continuous_listening',
+      'wake_word_required': false,
+    });
+
+    _publish('voice.listening.ready');
+
+    _microphoneSubscription = (capture as Success<Stream<Float32List>>).value
+        .listen(
+          (samples) {
+            _onMicrophoneSamples(samples, session);
+          },
+          onError: (Object error, StackTrace stack) {
+            diagnostics(
+              'voice.microphone.stream_error '
+              '$error',
+            );
+
+            _publish('voice.microphone.failed', {
+              'failure_code': 'microphone_stream_failed',
+            });
+          },
+          onDone: () {
+            diagnostics('voice.microphone.stream_closed');
+
+            if (_listening && !_handlingSpeech && !_disposed) {
+              unawaited(_restartListening());
+            }
+          },
         );
-      },
+
+    diagnostics(
+      'voice.listen.started '
+      'mode=continuous '
+      'wake_word=false',
     );
+
     return const Result.success(null);
   }
 
-  void _onWakeSamples(Float32List samples, int wakeSession) {
-    if (wakeSession != _wakeSession) return;
-    _wakeHealthySamples += samples.length;
-    if (_wakeHealthySamples >= _sampleRate) _wakeRecoveryAttempts = 0;
+  void _onMicrophoneSamples(Float32List samples, int session) {
+    if (!_listening || _handlingSpeech || _disposed) {
+      return;
+    }
+
+    if (samples.isEmpty) {
+      return;
+    }
+
     final rms = _rms(samples);
-    if (!_wakeAudioObserved && rms >= 0.01) {
-      _wakeAudioObserved = true;
-      _publish('voice.wake.audio_detected');
-    }
-    final calibrating =
-        _wakeNoiseCalibrationSamples < _sampleRate ~/ 2 &&
-        !_wakeSpeechObserved &&
-        rms < 0.03;
-    if (calibrating) {
-      _wakeNoiseFloor = (_wakeNoiseFloor * 0.8) + (rms * 0.2);
-      _wakeNoiseCalibrationSamples += samples.length;
-    } else {
-      final speechThreshold = math.max(0.015, _wakeNoiseFloor * 2.5);
-      if (rms >= speechThreshold) {
-        _wakeSpeechObserved = true;
-        _wakeSilenceSamples = 0;
-      } else if (_wakeSpeechObserved) {
-        _wakeSilenceSamples += samples.length;
+
+    if (rms >= _speechThreshold) {
+      if (!_speechDetected) {
+        _speechDetected = true;
+        _silenceSamples = 0;
+
+        _publish('voice.speech.detected', {'rms': rms});
+
+        diagnostics(
+          'voice.speech.started '
+          'rms=$rms',
+        );
       } else {
-        _wakeNoiseFloor = (_wakeNoiseFloor * 0.95) + (rms * 0.05);
+        _silenceSamples = 0;
+      }
+    } else if (_speechDetected) {
+      _silenceSamples += samples.length;
+    }
+
+    if (_speechDetected) {
+      _speechBuffer.addAll(samples);
+
+      if (_speechBuffer.length > _maximumUtteranceSamples) {
+        _speechBuffer.removeRange(
+          0,
+          _speechBuffer.length - _maximumUtteranceSamples,
+        );
       }
     }
-    _wakeBuffer.addAll(samples);
-    if (_wakeBuffer.length > _wakeBufferSamples) {
-      _wakeBuffer.removeRange(0, _wakeBuffer.length - _wakeBufferSamples);
+
+    if (_speechDetected && _silenceSamples >= _endOfSpeechSilenceSamples) {
+      final audio = Float32List.fromList(_speechBuffer);
+
+      _speechBuffer.clear();
+      _speechDetected = false;
+      _silenceSamples = 0;
+
+      /*
+       * Ignore extremely short noises.
+       */
+      if (audio.length >= _sampleRate ~/ 4) {
+        unawaited(_processSpeech(audio));
+      }
     }
-    Float32List? fallbackAudio;
-    if (_wakeSpeechObserved &&
-        _wakeSilenceSamples >= _wakeFallbackSilenceSamples) {
-      fallbackAudio = Float32List.fromList(_wakeBuffer);
-      _wakeSpeechObserved = false;
-      _wakeSilenceSamples = 0;
-    }
-    _wakeWork = _wakeWork.then((_) async {
-      if (wakeSession != _wakeSession || !_wakeMonitoring || _handlingWake) {
-        return;
-      }
-      final detected = await runtime.detectWakePhrase(samples);
-      if (wakeSession != _wakeSession || !_wakeMonitoring) return;
-      if (detected case Failed<bool>(:final failure)) {
-        _publish('voice.wake.failed', {'failure_code': failure.code});
-      }
-      if (detected case Success<bool>(value: true)) {
-        _wakeKeywordDetected = true;
-      }
-      if (fallbackAudio != null) {
-        final transcript = await runtime.transcribe(fallbackAudio);
-        if (wakeSession != _wakeSession || !_wakeMonitoring) return;
-        if (transcript case Success<String>(:final value)) {
-          final parsed = _parseWakeTranscript(value);
-          if (_wakeKeywordDetected || parsed.detected) {
-            if (!_wakeKeywordDetected && parsed.detected) {
-              _publish('voice.wake.fallback_detected');
-            }
-            _wakeKeywordDetected = false;
-            await _handleWake(fallbackAudio, pendingCommand: parsed.command);
-          }
-        } else if (_wakeKeywordDetected) {
-          _wakeKeywordDetected = false;
-          await _handleWake(fallbackAudio);
-        }
-      }
-    });
   }
 
-  ({bool detected, String? command}) _parseWakeTranscript(String transcript) {
-    final normalized = transcript
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z\s]'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    const wakeWords = {
-      'cronyx',
-      'cronix',
-      'croney',
-      'crowny',
-      'crony',
-      'trony',
-      'coney',
-      'corny',
-    };
-    final words = normalized
-        .split(' ')
-        .where((word) => word.isNotEmpty)
-        .toList();
-    if (words.isNotEmpty && words.first == 'hey') words.removeAt(0);
-    var detected = false;
-    while (words.isNotEmpty && wakeWords.contains(words.first)) {
-      detected = true;
-      words.removeAt(0);
-    }
-    if (detected) {
-      final command = words.join(' ').trim();
-      return (detected: true, command: command.isEmpty ? null : command);
-    }
-    while (words.isNotEmpty && wakeWords.contains(words.last)) {
-      detected = true;
-      words.removeLast();
-    }
-    if (detected) {
-      final command = words.join(' ').trim();
-      return (detected: true, command: command.isEmpty ? null : command);
-    }
-    return (detected: false, command: null);
-  }
-
-  Future<void> _handleWake(
-    Float32List wakeAudio, {
-    String? pendingCommand,
-  }) async {
-    if (_handlingWake) return;
-    _handlingWake = true;
-    await _stopWakeCapture();
-    _publish('voice.wake.detected');
-    _publish('voice.verification.started');
-    final embedding = await runtime.createSpeakerEmbedding(wakeAudio);
-    if (embedding case Failed<Float32List>(:final failure)) {
-      _publish('voice.verification.failed', {'failure_code': failure.code});
-      _handlingWake = false;
-      await _restartWakeMonitoring();
+  Future<void> _processSpeech(Float32List audio) async {
+    if (_handlingSpeech || _disposed) {
       return;
     }
-    final score = _cosine(
-      _profile!.embedding,
-      (embedding as Success<Float32List>).value,
+
+    _handlingSpeech = true;
+
+    await _stopMicrophoneCapture();
+
+    _publish('voice.listening.stopped');
+
+    diagnostics(
+      'voice.stt.start '
+      'samples=${audio.length} '
+      'seconds=${audio.length / _sampleRate}',
     );
-    if (score < verificationThreshold) {
-      await _handleUnknownSpeaker(score);
-      _handlingWake = false;
-      await _restartWakeMonitoring();
+
+    final timer = Stopwatch()..start();
+
+    final transcript = await runtime.transcribe(audio);
+
+    diagnostics(
+      'voice.stt.elapsed_ms='
+      '${timer.elapsedMilliseconds}',
+    );
+
+    if (transcript case Failed<String>(:final failure)) {
+      _publish('voice.stt.failed', {'failure_code': failure.code});
+
+      await speech.speak('I could not understand that.');
+
+      _handlingSpeech = false;
+
+      await _restartListening();
+
       return;
     }
-    _ownerVerified = true;
-    _publish('voice.owner.verified', {
-      'score': score,
-      'threshold': verificationThreshold,
-    });
-    final pending = _securityEvents
-        .where((event) => !event.acknowledged)
-        .toList();
-    final name = _profile!.displayName;
-    if (pending.isNotEmpty) {
-      for (final event in pending) {
-        event.acknowledged = true;
-      }
-      _publish('voice.security.events.acknowledged', {'count': pending.length});
-      await speech.speak(
-        'Hey $name, what can I do for you today? Also, I detected an unrecognized voice while you were away. I kept everything locked.',
-      );
-    } else if (pendingCommand == null) {
-      await speech.speak('Hey $name, what can I do for you today?');
-    }
-    await _captureAndExecuteOwnerCommand(pendingCommand);
-    _ownerVerified = false;
-    _handlingWake = false;
-    await _restartWakeMonitoring();
-  }
 
-  Future<void> _restartWakeMonitoring() async {
-    final result = await startWakeMonitoring();
-    if (result case Failed<void>(:final failure)) {
-      _publish('voice.wake.restart_failed', {'failure_code': failure.code});
-    }
-  }
+    final text = (transcript as Success<String>).value.trim();
 
-  Future<void> _handleUnknownSpeaker(double score) async {
-    _ownerVerified = false;
-    final event = UnknownSpeakerSessionEvent(
-      id: 'unknown-${clock().microsecondsSinceEpoch}',
-      occurredAt: clock().toUtc(),
-    );
-    _securityEvents.add(event);
-    _publish('voice.unknown_speaker.detected', {
-      'session_event_id': event.id,
-      'score': score,
-      'threshold': verificationThreshold,
-    });
-    await speech.speak(
-      'I am sorry, I do not recognize your voice. Please state your name for me.',
-    );
-    final nameAudio = await _captureUtterance();
-    if (nameAudio case Success<Float32List>(:final value)) {
-      final transcript = await runtime.transcribe(value);
-      if (transcript case Success<String>(:final value)) {
-        final provided = _shortName(value);
-        if (provided.isNotEmpty) event.providedName = provided;
-      }
-    }
-    _publish('voice.access.locked', {'session_event_id': event.id});
-    final providedName = event.providedName;
-    await speech.speak(
-      providedName == null
-          ? 'CronyX will remain locked because I could not verify your voice.'
-          : 'Hello $providedName. I still cannot verify your voice, so CronyX will remain locked.',
-    );
-  }
-
-  String _shortName(String transcript) {
-    var value = transcript.trim().replaceAll(RegExp(r"[^A-Za-z\-' ]"), '');
-    value = value.replaceFirst(
-      RegExp(r"^(my name is|i am|i'm)\s+", caseSensitive: false),
-      '',
-    );
-    final parts = value.split(RegExp(r'\s+')).where((part) => part.isNotEmpty);
-    return parts.take(3).join(' ');
-  }
-
-  Future<void> _captureAndExecuteOwnerCommand([String? pendingCommand]) async {
-    final responseTimer = Stopwatch()..start();
-    String transcript;
-    if (pendingCommand == null) {
-      final captured = await _captureUtterance();
-      if (captured case Failed<Float32List>(:final failure)) {
-        _publish('voice.stt.failed', {'failure_code': failure.code});
-        return;
-      }
-      _publish('voice.thinking');
-      final sttStartedAt = responseTimer.elapsedMilliseconds;
-      final recognized = await runtime.transcribe(
-        (captured as Success<Float32List>).value,
-      );
-      diagnostics(
-        'voice.latency.stt_ms='
-        '${responseTimer.elapsedMilliseconds - sttStartedAt}',
-      );
-      if (recognized case Failed<String>(:final failure)) {
-        _publish('voice.stt.failed', {'failure_code': failure.code});
-        await speech.speak('I could not understand that.');
-        return;
-      }
-      transcript = (recognized as Success<String>).value.trim();
-    } else {
-      _publish('voice.thinking');
-      transcript = pendingCommand.trim();
-    }
-    if (transcript.isEmpty) {
+    if (text.isEmpty) {
       _publish('voice.stt.empty');
+
+      _handlingSpeech = false;
+
+      await _restartListening();
+
       return;
     }
-    _publish('voice.transcript.ready', {'transcript': transcript});
-    if (!_ownerVerified) {
-      _publish('voice.command.rejected', {'reason': 'voice_locked'});
+
+    diagnostics('voice.stt.transcript="$text"');
+
+    _publish('voice.transcript.ready', {'transcript': text});
+
+    /*
+     * THIS IS THE IMPORTANT PART.
+     *
+     * There is:
+     *
+     * NO Crony check
+     * NO CronyX check
+     * NO wake-word parser
+     * NO speaker verification
+     * NO owner profile check
+     *
+     * Every recognized sentence goes
+     * directly to the orchestrator.
+     */
+
+    _ownerVerified = true;
+
+    _publish('voice.command.accepted', {'reason': 'continuous_voice_mode'});
+
+    _publish('voice.thinking');
+
+    final commandTimer = Stopwatch()..start();
+
+    Result<OrchestratorResponse> result;
+
+    try {
+      result = await commandHandler(text);
+    } catch (error, stack) {
+      diagnostics(
+        'voice.command.exception '
+        '$error\n$stack',
+      );
+
+      _publish('voice.command.failed', {'failure_code': 'command_exception'});
+
+      await speech.speak('Something went wrong while processing that request.');
+
+      _handlingSpeech = false;
+      _ownerVerified = true;
+
+      await _restartListening();
+
       return;
     }
-    final commandStartedAt = responseTimer.elapsedMilliseconds;
-    final result = await commandHandler(transcript);
+
     diagnostics(
-      'voice.latency.command_ms='
-      '${responseTimer.elapsedMilliseconds - commandStartedAt}',
+      'voice.command.elapsed_ms='
+      '${commandTimer.elapsedMilliseconds}',
     );
-    final speechStartedAt = responseTimer.elapsedMilliseconds;
+
+    final speechTimer = Stopwatch()..start();
+
     await result.fold(
-      (response) => speech.speak(_spokenResponse(response.message)),
-      (failure) => speech.speak(_spokenResponse(failure.message)),
+      (response) async {
+        final message = _spokenResponse(response.message);
+
+        diagnostics('voice.response="$message"');
+
+        _publish('voice.response.ready', {'message': message});
+
+        await speech.speak(message);
+      },
+      (failure) async {
+        diagnostics(
+          'voice.command.failure '
+          '${failure.code}: '
+          '${failure.message}',
+        );
+
+        _publish('voice.command.failed', {'failure_code': failure.code});
+
+        await speech.speak(_spokenResponse(failure.message));
+      },
     );
+
     diagnostics(
-      'voice.latency.speech_total_ms='
-      '${responseTimer.elapsedMilliseconds - speechStartedAt}',
+      'voice.response.speech_elapsed_ms='
+      '${speechTimer.elapsedMilliseconds}',
     );
+
+    _handlingSpeech = false;
+    _ownerVerified = true;
+
+    await _restartListening();
   }
 
-  /// Keeps host-specific browser results in the UI/event result while using a
-  /// stable spoken phrase that can benefit from the local Kokoro cache.
+  Future<Result<Float32List>> _captureUtterance() async {
+    final started = await microphone.start();
+
+    if (started case Failed<Stream<Float32List>>(:final failure)) {
+      return Result.failure(failure);
+    }
+
+    _publish('voice.listening.started');
+
+    final samples = <double>[];
+
+    var speechDetected = false;
+    var silenceSamples = 0;
+
+    final completed = Completer<void>();
+
+    late final StreamSubscription<Float32List> subscription;
+
+    final timeout = Timer(const Duration(seconds: 10), () {
+      if (!completed.isCompleted) {
+        completed.complete();
+      }
+    });
+
+    subscription = (started as Success<Stream<Float32List>>).value.listen(
+      (chunk) {
+        samples.addAll(chunk);
+
+        final rms = _rms(chunk);
+
+        if (rms >= _speechThreshold) {
+          speechDetected = true;
+          silenceSamples = 0;
+        } else if (speechDetected) {
+          silenceSamples += chunk.length;
+        }
+
+        if (speechDetected && silenceSamples >= _endOfSpeechSilenceSamples) {
+          if (!completed.isCompleted) {
+            completed.complete();
+          }
+        }
+      },
+      onError: (_) {
+        if (!completed.isCompleted) {
+          completed.complete();
+        }
+      },
+      onDone: () {
+        if (!completed.isCompleted) {
+          completed.complete();
+        }
+      },
+    );
+
+    await completed.future;
+
+    timeout.cancel();
+
+    await subscription.cancel();
+
+    await microphone.stop();
+
+    _publish('voice.listening.stopped');
+
+    if (!speechDetected || samples.length < _sampleRate) {
+      return _failure('no_speech', 'No usable speech was captured.');
+    }
+
+    return Result.success(Float32List.fromList(samples));
+  }
+
   String _spokenResponse(String message) {
     if (RegExp(
       r'^.+ is opening in CronyX Browser\.$',
@@ -635,140 +831,109 @@ final class LocalVoiceAssistant implements VoiceAssistant {
     ).hasMatch(message)) {
       return 'The page is opening in CronyX Browser.';
     }
+
     if (RegExp(
       r'^[A-Za-z0-9.-]+\.[A-Za-z]{2,} opened successfully\.$',
       caseSensitive: false,
     ).hasMatch(message)) {
       return 'The website opened successfully.';
     }
+
     return message;
   }
 
-  Future<Result<Float32List>> _captureUtterance() async {
-    final started = await microphone.start();
-    if (started case Failed<Stream<Float32List>>(:final failure)) {
-      return Result.failure(failure);
-    }
-    _publish('voice.listening.started');
-    final samples = <double>[];
-    var speechDetected = false;
-    var silenceSamples = 0;
-    final completed = Completer<void>();
-    late final StreamSubscription<Float32List> subscription;
-    final timeout = Timer(const Duration(seconds: 10), () {
-      if (!completed.isCompleted) completed.complete();
-    });
-    subscription = (started as Success<Stream<Float32List>>).value.listen(
-      (chunk) {
-        samples.addAll(chunk);
-        final rms = _rms(chunk);
-        if (rms >= 0.015) {
-          speechDetected = true;
-          silenceSamples = 0;
-        } else if (speechDetected) {
-          silenceSamples += chunk.length;
-        }
-        if (speechDetected && silenceSamples >= _endOfSpeechSilenceSamples) {
-          if (!completed.isCompleted) completed.complete();
-        }
-      },
-      onError: (_) {
-        if (!completed.isCompleted) completed.complete();
-      },
-      onDone: () {
-        if (!completed.isCompleted) completed.complete();
-      },
-    );
-    await completed.future;
-    timeout.cancel();
-    await subscription.cancel();
-    await microphone.stop();
-    _publish('voice.listening.stopped');
-    if (!speechDetected || samples.length < _sampleRate) {
-      return _failure('no_speech', 'No usable speech was captured.');
-    }
-    return Result.success(Float32List.fromList(samples));
-  }
-
   double _rms(Float32List samples) {
-    if (samples.isEmpty) return 0;
+    if (samples.isEmpty) {
+      return 0;
+    }
+
     var sum = 0.0;
+
     for (final sample in samples) {
       sum += sample * sample;
     }
-    return math.sqrt(sum / samples.length);
-  }
 
-  double _cosine(Float32List left, Float32List right) {
-    if (left.length != right.length || left.isEmpty) return -1;
-    var dot = 0.0;
-    var leftNorm = 0.0;
-    var rightNorm = 0.0;
-    for (var index = 0; index < left.length; index++) {
-      dot += left[index] * right[index];
-      leftNorm += left[index] * left[index];
-      rightNorm += right[index] * right[index];
-    }
-    if (leftNorm == 0 || rightNorm == 0) return -1;
-    return dot / (math.sqrt(leftNorm) * math.sqrt(rightNorm));
+    return math.sqrt(sum / samples.length);
   }
 
   @override
   Future<Result<void>> stopListening() async {
-    _resumeWakeAfterSpeech = false;
-    await _stopWakeCapture();
-    await microphone.stop();
+    _resumeListeningAfterSpeech = false;
+
+    await _stopMicrophoneCapture();
+
     _ownerVerified = false;
+
     return const Result.success(null);
   }
 
-  Future<void> _stopWakeCapture() async {
-    _wakeSession++;
-    _wakeMonitoring = false;
-    await _wakeSubscription?.cancel();
-    _wakeSubscription = null;
+  Future<void> _stopMicrophoneCapture() async {
+    _listening = false;
+
+    await _microphoneSubscription?.cancel();
+
+    _microphoneSubscription = null;
+
     await microphone.stop();
+
+    _speechBuffer.clear();
+    _speechDetected = false;
+    _silenceSamples = 0;
+
     _publish('voice.wake.monitoring.stopped');
   }
 
-  Future<void> _recoverWakeCapture(int wakeSession, String failureCode) async {
-    if (wakeSession != _wakeSession || _disposed || _handlingWake) return;
-    _wakeRecoveryAttempts++;
-    await _stopWakeCapture();
-    _publish('voice.microphone.failed', {'failure_code': failureCode});
-    final delay = switch (_wakeRecoveryAttempts) {
-      1 => const Duration(milliseconds: 250),
-      2 => const Duration(seconds: 1),
-      _ => const Duration(seconds: 3),
-    };
-    await Future<void>.delayed(delay);
-    if (!_disposed && !_handlingWake && _profile != null) {
-      await _restartWakeMonitoring();
+  Future<void> _restartListening() async {
+    if (_disposed || _handlingSpeech) {
+      return;
+    }
+
+    /*
+     * Give TTS/player lifecycle time to
+     * settle before reopening the mic.
+     */
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+
+    if (_disposed || _handlingSpeech) {
+      return;
+    }
+
+    final result = await startWakeMonitoring();
+
+    if (result case Failed<void>(:final failure)) {
+      diagnostics(
+        'voice.listen.restart_failed '
+        'code=${failure.code}',
+      );
+
+      _publish('voice.microphone.failed', {'failure_code': failure.code});
     }
   }
 
   @override
   Future<Result<String>> describeSecurityActivity() async {
-    if (!_ownerVerified) {
-      return const Result.failure(
-        Failure('Voice access is locked.', code: 'voice_locked'),
-      );
-    }
     if (_securityEvents.isEmpty) {
       return const Result.success(
         'No unrecognized voice activations were recorded this session.',
       );
     }
+
     return const Result.success(
-      'An unrecognized voice activated the voice interface. No voice commands were executed.',
+      'An unrecognized voice activation was recorded. Normal voice conversation is currently enabled.',
     );
   }
 
-  Result<T> _failure<T>(String code, String message) =>
-      Result.failure(Failure(message, code: code));
+  Result<T> _failure<T>(String code, String message) {
+    return Result.failure(Failure(message, code: code));
+  }
 
   void _publish(String type, [Map<String, Object?> data = const {}]) {
-    diagnostics(type == 'voice.startup.readiness' ? '$type $data' : type);
+    if (type == 'voice.startup.readiness') {
+      diagnostics('$type $data');
+    } else {
+      diagnostics(type);
+    }
+
     events.publish(
       ApplicationEvent(type: type, occurredAt: clock().toUtc(), data: data),
     );
@@ -776,18 +941,29 @@ final class LocalVoiceAssistant implements VoiceAssistant {
 
   @override
   Future<void> dispose() async {
-    if (_disposed) return;
+    if (_disposed) {
+      return;
+    }
+
     _disposed = true;
+
     await stopListening();
+
     try {
-      await _wakeWork;
+      await _voiceWork;
       await _lifecycleWork;
     } catch (_) {
-      // Runtime failures have already been emitted as structured voice events.
+      // Runtime failures are emitted as structured events.
     }
+
     await microphone.dispose();
+
     await runtime.dispose();
+
     await _lifecycleSubscription?.cancel();
+
     _lifecycleSubscription = null;
   }
 }
+
+

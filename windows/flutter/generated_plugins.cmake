@@ -6,6 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
   camera_desktop
   face_detection_tflite
+  record_windows
   screen_retriever_windows
   webview_flutter_windows
   window_manager

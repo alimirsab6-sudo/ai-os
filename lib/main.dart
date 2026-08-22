@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app/ai_os_app.dart';
@@ -16,33 +16,24 @@ Future<void> main() async {
   const windowOptions = WindowOptions(
     fullScreen: false,
     title: 'CronyX AI OS',
-    titleBarStyle: TitleBarStyle.hidden,
-    windowButtonVisibility: false,
+    titleBarStyle: TitleBarStyle.normal,
+    windowButtonVisibility: true,
   );
 
-  await windowManager.waitUntilReadyToShow(
-    windowOptions,
-    () async {
-      await windowManager.maximize();
-      await windowManager.show();
-      await windowManager.focus();
-    },
-  );
+  await windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.maximize();
+    await windowManager.show();
+    await windowManager.focus();
+  });
 
   final services = CompositionRoot.create();
 
   runApp(
     AiOsApp(
       orchestrator: services.get<Orchestrator>(),
-      browserController:
-          services.get<WindowsWebView2BrowserController>(),
-      speechSynthesizer:
-          services.get<SpeechSynthesizer>(),
-      voiceAssistant:
-          services.get<VoiceAssistant>(),
+      browserController: services.get<WindowsWebView2BrowserController>(),
+      speechSynthesizer: services.get<SpeechSynthesizer>(),
+      voiceAssistant: services.get<VoiceAssistant>(),
     ),
   );
 }
-
-
-

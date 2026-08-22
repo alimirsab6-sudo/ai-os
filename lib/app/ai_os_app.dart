@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../browser/embedded/windows_webview2_browser_controller.dart';
 import '../core/orchestrator/orchestrator.dart';
@@ -35,11 +35,12 @@ class _AiOsAppState extends State<AiOsApp> {
   bool _unlocked = false;
   bool _enrollmentMode = true;
   String? _error;
+  late final Future<void> _speechWarmup;
 
   @override
   void initState() {
     super.initState();
-    unawaited(widget.speechSynthesizer.initialize());
+    _speechWarmup = widget.speechSynthesizer.initialize().then((_) {});
     _prepareStartup();
   }
 
@@ -64,7 +65,10 @@ class _AiOsAppState extends State<AiOsApp> {
     }
   }
 
-  void _openCore(String name, {required bool returningUser}) {
+  Future<void> _openCore(String name, {required bool returningUser}) async {
+    if (!mounted) return;
+
+    await _speechWarmup;
     if (!mounted) return;
 
     setState(() {
@@ -104,9 +108,7 @@ class _AiOsAppState extends State<AiOsApp> {
       return const Scaffold(
         backgroundColor: Color(0xFF030507),
         body: Center(
-          child: CircularProgressIndicator(
-            color: Color(0xFF3298FF),
-          ),
+          child: CircularProgressIndicator(color: Color(0xFF3298FF)),
         ),
       );
     }
@@ -120,10 +122,7 @@ class _AiOsAppState extends State<AiOsApp> {
             child: Text(
               'CronyX could not start.\n\n$_error',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 16),
             ),
           ),
         ),
@@ -137,9 +136,7 @@ class _AiOsAppState extends State<AiOsApp> {
         speechSynthesizer: widget.speechSynthesizer,
         voiceAssistant: widget.voiceAssistant,
         browserSurfaceBuilder: (context, controller) =>
-            WindowsWebView2Surface(
-          controller: widget.browserController,
-        ),
+            WindowsWebView2Surface(controller: widget.browserController),
       );
     }
 
@@ -161,10 +158,7 @@ class _AiOsAppState extends State<AiOsApp> {
       controller: controller,
       enrollmentMode: _enrollmentMode,
       onAccessGranted: (name, returningUser) {
-        _openCore(
-          name,
-          returningUser: returningUser,
-        );
+        unawaited(_openCore(name, returningUser: returningUser));
       },
     );
   }

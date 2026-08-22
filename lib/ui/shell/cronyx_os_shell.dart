@@ -74,7 +74,15 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
       unawaited(speechSynthesizer.initialize());
     }
     final voiceAssistant = widget.voiceAssistant;
-    if (voiceAssistant != null) unawaited(voiceAssistant.initialize());
+    if (voiceAssistant != null) {
+      unawaited(
+        voiceAssistant.initialize().then((result) async {
+          if (result is Success<void>) {
+            await voiceAssistant.startWakeMonitoring();
+          }
+        }),
+      );
+    }
   }
 
   @override
@@ -341,7 +349,7 @@ class _CronyxOsShellState extends State<CronyxOsShell> {
           ],
         );
       default:
-        // Remaining voice events are non-visual lifecycle/security telemetry.
+      // Remaining voice events are non-visual lifecycle/security telemetry.
     }
     return true;
   }
@@ -880,7 +888,7 @@ class _TopBarState extends State<_TopBar> {
               children: [
                 Text(_formatClock(_now), style: _Styles.topTime),
                 const SizedBox(width: 10),
-                Text('•', style: _Styles.topSeparator),
+                Text('â€¢', style: _Styles.topSeparator),
                 const SizedBox(width: 10),
                 Text(_formatDate(_now), style: _Styles.topDate),
               ],
@@ -2034,7 +2042,7 @@ class _CommandBar extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 1),
                                 const Text(
-                                  'Examples:  "Open Chrome"   ·   "Show my files"   ·   "System status"   ·   "What can you do?"',
+                                  'Examples:  "Open Chrome"   Â·   "Show my files"   Â·   "System status"   Â·   "What can you do?"',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: _Styles.commandExamples,
@@ -2529,7 +2537,7 @@ class _SystemMetric extends StatelessWidget {
           const SizedBox(height: 5),
           if (network) ...[
             const Text(
-              '↑ 12.4 KB/s',
+              'â†‘ 12.4 KB/s',
               style: TextStyle(
                 color: _CronyxColors.success,
                 fontSize: 11,
@@ -2537,7 +2545,7 @@ class _SystemMetric extends StatelessWidget {
               ),
             ),
             const Text(
-              '↓ 8.7 KB/s',
+              'â†“ 8.7 KB/s',
               style: TextStyle(color: Color(0xFF8FA4B8), fontSize: 9.5),
             ),
           ] else if (security) ...[
